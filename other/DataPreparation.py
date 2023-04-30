@@ -191,8 +191,9 @@ class DataPrepeation:
 
                 if ret:
                     label_int = self._id_label(spikes_files[frame_id])
+                    resized_frame= cv2.resize(frame,(200,75))
                     cv2.imwrite(
-                        os.path.join(path_output, new_folder_name, f'{frame_id}-{label_int}.png'), frame)
+                        os.path.join(path_output, new_folder_name, f'{frame_id}-{label_int}.png'), resized_frame)
                     frame_id += 1
                 else:
                     break
@@ -209,7 +210,7 @@ path_clips = r"D:\datasets\huge-sample\clips"
 path_csv = r"D:\datasets\huge-sample\data.csv"
 #path_csv_new = r"D:\datasets\huge-sample\data1.csv"
 
-path_spike_dataset= r"D:\datasets\huge-sample\predictionDatasetHuge"
+path_spike_dataset= r"D:\datasets\huge-sample\predictionDataset\dataset_prediction"
 
 path_output = r"D:\datasets\huge-sample\mp4"
 path_dir = r"D:\datasets\big-sample\segAll"
