@@ -59,12 +59,42 @@ class SNN(nn.Module):
         return x_seq
 
 
+class PredictionRGBDataset(Dataset):
+    def __init__(self, targ_dir: str) -> None:
+
+        self.all_folders = [os.path.join(targ_dir, directory) for directory in os.listdir(targ_dir)]
+        self.transform = transforms.Compose([
+                transforms.Resize((150, 400)),
+                transforms.PILToTensor()])
+
+    def load_image(self, image) -> Image.Image:
+        img = Image.open(image)
+        return self.transform(img)
+
+    def __len__(self) -> int:
+        return len(self.all_folders)
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
+        folder_path = self.all_folders[index]
+
+        file_list = glob.glob(os.path.join(folder_path, "*.png"))
+        file_list_sorted = sorted(file_list, key=lambda x: int(os.path.splitext(os.path.basename(x))[0].split("-")[0]))
+        images_tensor = torch.cat([self.load_image(image).unsqueeze(0) for image in file_list_sorted])
+
+        label_list = [int(str(image)[-5]) for image in file_list_sorted]
+        label_tensor = torch.tensor(label_list).unsqueeze(1)
+        name_sample = os.path.basename(folder_path)
+        return images_tensor, label_tensor, name_sample
+
+
+
+
+
 class PredictionDvsDataset(Dataset):
     def __init__(self, targ_dir: str) -> None:
 
         self.all_folders = [os.path.join(targ_dir, directory) for directory in os.listdir(targ_dir)]
         self.transform = transforms.Compose([
-                #transforms.RandomHorizontalFlip(),
                 transforms.Resize((600//4, 1600//4), interpolation=transforms.InterpolationMode.NEAREST),
                 transforms.PILToTensor()])
 
@@ -93,9 +123,6 @@ def train_val_dataset(dataset, val_split=1):
     _datasets = {'train': Subset(dataset, train_idx), 'val': Subset(dataset, val_idx)}
     return _datasets
 
-def _id_number(filename):
-    number = filename.split("-")[0]
-    return int(number)
 
 def check_labels(_label, _file_output):
     import numpy as np
@@ -121,7 +148,7 @@ def f1_score(_pred, _target):
 
 
 def main():
-    path_to_mp4_images=""
+
     wandb.init(
         project="Dataset_Overview",
         entity="snn_team"
@@ -134,8 +161,11 @@ def main():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    datasetrgb = PredictionRGBDataset(r"/home/plgkrzysjed1/datasets/dataset_prediction_rgb")
     dataset = PredictionDvsDataset(r"/home/plgkrzysjed1/datasets/dataset_prediction")
-    test_data_loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=12, pin_memory=True)
+
+    test_data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=12, pin_memory=True)
+    test_data_loader_rgb = DataLoader(datasetrgb, batch_size=1, shuffle=False, num_workers=12, pin_memory=True)
     checkpoint = torch.load("/home/plgkrzysjed1/workbench/data/prediction_version2/DataAnalysis/checkpoint.pth")
     net = SNN(snn=snn, neurons=neurons, activation=activation, neurons2=neurons2)
     net.load_state_dict(checkpoint['net'])
@@ -145,14 +175,15 @@ def main():
 
     net.eval()
     with torch.no_grad():
-        for img, label, name in test_data_loader:
-            # img = img.to(device).float()
+        for (img, label, name), (img_rgb, label_rgb, name_rgb) in zip(test_data_loader,test_data_loader_rgb):
             label = label.to(device)
             label_shifted = torch.roll(label, shifts=-30, dims=1)
             label_onehot_shifted = F.one_hot(label_shifted, 2).float()
 
             img = img.permute(1, 0, 2, 3, 4)  # [B, T, C, H, W] --> [T, B, C, H, W]
             img = img.to(device).float()
+            img_rgb = img_rgb.permute(1, 0, 2, 3, 4)
+            img_rgb = img_rgb.to(device).float()
 
             out_fr = net(img)  # output [T, B, 2]
             out_fr = out_fr.unsqueeze(0).permute(2, 1, 0, 3)  # [1, T, B, 2] --> [B, T, 1, 2]
@@ -168,34 +199,21 @@ def main():
             predd=[]
             functional.reset_net(net)
             # img [T, B, C, H, W] --> [T, C, H, W]
-            for i, (ima, l, lshift, lpred) in enumerate(
-                    zip(img.squeeze(1), label.squeeze(0).cpu(), label_shifted.squeeze(0).cpu(), pred.squeeze(0).cpu())):
-                mask_image = wandb.Image(ima,
-                                         caption=f"Frame number: {i} | Label: {str(l.item())} | Label_shifted: {str(lshift.item())} | Prediction: {str(lpred.item())}",
-                                         )
+            for i, (ima,ima_rgb, l, lshift, lpred) in enumerate(
+                    zip(img.squeeze(1),img_rgb.squeeze(1), label.squeeze(0).cpu(), label_shifted.squeeze(0).cpu(), pred.squeeze(0).cpu())):
+                mask_image = wandb.Image(ima, caption=f"Frame number: {i} | Label: {str(l.item())} | Label_shifted: "
+                                                      f"{str(lshift.item())} | Prediction: {str(lpred.item())}")
+                mask_image_rgb = wandb.Image(ima_rgb, caption=f"Frame number: {i} | Label: {str(l.item())} | Label_shifted:"
+                                                              f" {str(lshift.item())} | Prediction: {str(lpred.item())}")
                 labell.append(int(lshift.item()))
                 predd.append(int(lpred.item()))
-
-                folder_mp4_path=os.path.join(path_to_mp4_images,name[0])
-                image_mp4_files = [f for f in listdir(folder_mp4_path)]
-                mp4_image_sorted = sorted(spikes_files, key=self._id_number)
-
-                wandb.log({f"{name[0]}": [mask_image, Image.open(mp4_image_sorted)]})
+                wandb.log({f"{name[0]}": [mask_image,mask_image_rgb ]})
 
             sample.append([name[0], test_f1])
-
-
     my_table = wandb.Table(columns=["name_sample", "f1_score"], data=sample)
-
-
     wandb.log({"Base table": my_table})
-
-    #wandb.log({"table_key": my_table}, commit=False)
     wandb.finish()
 
 
 if __name__ == "__main__":
-
     main()
-
-# if __name__ == "__main__":

@@ -158,7 +158,7 @@ class DataPrepeation:
                 if ret:
                     label_int = int(self._str2bool(label_list[frame_id]))
                     cv2.imwrite(
-                        os.path.join(path_output, new_folder_name, f'{frame_id}-{label_int}.png'), frame)
+                        os.path.join(path_output, new_folder_name, f'{frame_id}-{label_int}.jpg'), frame)
                     frame_id += 1
                 else:
                     break
@@ -191,9 +191,9 @@ class DataPrepeation:
 
                 if ret:
                     label_int = self._id_label(spikes_files[frame_id])
-                    resized_frame= cv2.resize(frame,(200,75))
+                    resized_frame= cv2.resize(frame,(400,150))
                     cv2.imwrite(
-                        os.path.join(path_output, new_folder_name, f'{frame_id}-{label_int}.png'), resized_frame)
+                        os.path.join(path_output, new_folder_name, f'{frame_id}-{label_int}.jpg'), resized_frame)
                     frame_id += 1
                 else:
                     break
