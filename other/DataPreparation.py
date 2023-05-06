@@ -6,6 +6,7 @@ from os.path import isfile, join
 import csv
 import shutil
 import cv2
+import glob
 
 class DataPrepeation:
 
@@ -93,6 +94,25 @@ class DataPrepeation:
                     for v in values:
                         writer.writerow((key, i, v))
                         i += 1
+
+    def dataset_to_csv(self, folder_dataset, path_to_new_csv):
+        _folders_list = listdir(folder_dataset)
+
+        with open(path_to_new_csv, 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(("id", "frame.idx", "frame.pedestrian.is_crossing"))
+            for folder in _folders_list:
+                file_list = glob.glob(os.path.join(folder_dataset, folder, "*.png"))
+                file_list_sorted = sorted(file_list,
+                                          key=lambda x: int(os.path.splitext(os.path.basename(x))[0].split("-")[0]))
+
+                for frame in file_list_sorted:
+                    head, file = os.path.split(frame)
+                    folder_name = os.path.split(head)[1]
+                    file_no_ext= file.split(".")[0]
+                    num_frame, label =  file_no_ext.split("-")
+                    writer.writerow((folder_name, num_frame, label))
+
 
     def unpack_apng(self, path_clips=r"D:\datasets\big-sample\clips",
                           type_of_images="1", path_output=r"D:\datasets\big-sample\segAll",
@@ -207,7 +227,7 @@ class DataPrepeation:
 #path_clips = r"D:\datasets\small-sample\clips"
 path_clips = r"D:\datasets\huge-sample\clips"
 #path_csv = r"D:\datasets\big-sample\predictionDataset\filtered_data_small.csv"
-path_csv = r"D:\datasets\huge-sample\data.csv"
+path_csv = r"D:\datasets\huge-sample\dataNew.csv"
 #path_csv_new = r"D:\datasets\huge-sample\data1.csv"
 
 path_spike_dataset= r"D:\datasets\huge-sample\predictionDataset\dataset_prediction"
@@ -216,5 +236,5 @@ path_output = r"D:\datasets\huge-sample\mp4"
 path_dir = r"D:\datasets\big-sample\segAll"
 #upack_apng_images(type_of_images="1", _path_clips=path_clips, _path_csv=path_csv_new, _path_output=path_output)
 d = DataPrepeation()
-d.unpack_mp4_based_on_spike_dataset(path_clips, path_spike_dataset, path_output)
-
+#d.unpack_mp4_based_on_spike_dataset(path_clips, path_spike_dataset, path_output)
+d.dataset_to_csv(path_spike_dataset, path_csv)
