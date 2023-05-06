@@ -8,7 +8,7 @@ import shutil
 import cv2
 import glob
 
-class DataPrepeation:
+class DataPreparationToolbox:
 
     def _id_number(self,filename):
         number = filename.split("-")[0]
@@ -235,6 +235,6 @@ path_spike_dataset= r"D:\datasets\huge-sample\predictionDataset\dataset_predicti
 path_output = r"D:\datasets\huge-sample\mp4"
 path_dir = r"D:\datasets\big-sample\segAll"
 #upack_apng_images(type_of_images="1", _path_clips=path_clips, _path_csv=path_csv_new, _path_output=path_output)
-d = DataPrepeation()
+d = DataPreparationToolbox()
 #d.unpack_mp4_based_on_spike_dataset(path_clips, path_spike_dataset, path_output)
 d.dataset_to_csv(path_spike_dataset, path_csv)
