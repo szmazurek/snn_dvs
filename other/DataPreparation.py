@@ -117,12 +117,14 @@ class DataPreparationToolbox:
     def unpack_apng(self, path_clips=r"D:\datasets\big-sample\clips",
                           type_of_images="1", path_output=r"D:\datasets\big-sample\segAll",
                           path_csv=r"D:\datasets\big-sample\data.csv"):
-        label = self._load_csv(_path_csv)
-        for key in label:
-            label[key] = list(filter(lambda x: x != "", label[key]))
+        #  type_of_images 1 -> dvs
+        #  type_of_images 2 -> seg
+
+        label_data = self._load_csv(path_csv)
+        for key in label_data:
+            label_data[key] = list(filter(lambda x: x != "", label_data[key]))
 
         raw_files = [f for f in listdir(path_clips) if isfile(join(path_clips, f)) and "apng" in f]
-        no_extension_files = []
 
         for file in raw_files:
             base_name, ext = os.path.splitext(file)
@@ -133,7 +135,7 @@ class DataPreparationToolbox:
                 continue
 
             try:
-                label_list = label[base_name_shortened]
+                label_list = label_data[base_name_shortened]
             except:
                 continue
 
@@ -142,12 +144,12 @@ class DataPreparationToolbox:
                 os.mkdir(new_folder_name)
 
             im = APNG.open(os.path.join(path_clips, file))
-            n = 0
-            for (png, control), label in zip(im.frames, label_list):
-                label = int(self._str2bool(label))
+            frame_id = 0
+            for (png, control), label_frame in zip(im.frames, label_list):
+                label_int = int(self._str2bool(label_frame))
                 png.save(
                     os.path.join(path_output, new_folder_name, f'{frame_id}-{label_int}.png'))
-                n += 1
+                frame_id += 1
 
     def unpack_mp4(self, path_clips=r"D:\datasets\big-sample\clips", path_csv=r"D:\datasets\big-sample\data.csv",
                    path_output=r"D:\datasets\big-sample\segAll"):
@@ -224,17 +226,13 @@ class DataPreparationToolbox:
 #  path_csv = r"D:\ProjectsPython\SpikingJelly\small-sample/data.csv"
 
 
-#path_clips = r"D:\datasets\small-sample\clips"
 path_clips = r"D:\datasets\huge-sample\clips"
-#path_csv = r"D:\datasets\big-sample\predictionDataset\filtered_data_small.csv"
-path_csv = r"D:\datasets\huge-sample\dataNew.csv"
-#path_csv_new = r"D:\datasets\huge-sample\data1.csv"
-
+path_csv = r"D:\datasets\huge-sample\data.csv"
 path_spike_dataset= r"D:\datasets\huge-sample\predictionDataset\dataset_prediction"
-
 path_output = r"D:\datasets\huge-sample\mp4"
-path_dir = r"D:\datasets\big-sample\segAll"
-#upack_apng_images(type_of_images="1", _path_clips=path_clips, _path_csv=path_csv_new, _path_output=path_output)
+path_dir = r"D:\datasets\huge-sample\segAll"
+
 d = DataPreparationToolbox()
+d.unpack_apng(type_of_images="2", path_clips=path_clips, path_csv=path_csv, path_output=path_dir)
 #d.unpack_mp4_based_on_spike_dataset(path_clips, path_spike_dataset, path_output)
-d.dataset_to_csv(path_spike_dataset, path_csv)
+#d.dataset_to_csv(path_spike_dataset, path_csv)
