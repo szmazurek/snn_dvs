@@ -1,4 +1,3 @@
-import numpy as np
 from apng import APNG
 import os
 from os import listdir
@@ -83,7 +82,7 @@ class DataPreparationToolbox:
 
     def create_new_csv_based_on_folders(self, folder_with_filtered_dic, path_to_main_csv, path_to_new_csv):
         _folders_list = listdir(folder_with_filtered_dic)
-        _labels_dic =self._load_csv(path_to_main_csv)
+        _labels_dic = self._load_csv(path_to_main_csv)
 
         with open(path_to_new_csv, 'w', newline='') as file:
             writer = csv.writer(file)
@@ -179,8 +178,9 @@ class DataPreparationToolbox:
                 ret, frame = cap.read()
                 if ret:
                     label_int = int(self._str2bool(label_list[frame_id]))
+                    resized_frame = cv2.resize(frame, (400, 150))
                     cv2.imwrite(
-                        os.path.join(path_output, new_folder_name, f'{frame_id}-{label_int}.jpg'), frame)
+                        os.path.join(path_output, new_folder_name, f'{frame_id}-{label_int}.jpg'), resized_frame)
                     frame_id += 1
                 else:
                     break
@@ -227,12 +227,12 @@ class DataPreparationToolbox:
 
 
 path_clips = r"D:\datasets\huge-sample\clips"
-path_csv = r"D:\datasets\huge-sample\data.csv"
+path_csv = r"D:\datasets\huge-sample\dataWalk.csv"
 path_spike_dataset= r"D:\datasets\huge-sample\predictionDataset\dataset_prediction"
 path_output = r"D:\datasets\huge-sample\mp4"
-path_dir = r"D:\datasets\huge-sample\segAll"
+path_dir = r"D:\datasets\huge-sample\mp4Walk"
 
 d = DataPreparationToolbox()
-d.unpack_apng(type_of_images="2", path_clips=path_clips, path_csv=path_csv, path_output=path_dir)
+d.unpack_mp4(path_clips=path_clips, path_csv=path_csv, path_output=path_dir)
 #d.unpack_mp4_based_on_spike_dataset(path_clips, path_spike_dataset, path_output)
-#d.dataset_to_csv(path_spike_dataset, path_csv)
+#d.dataset_to_csv("D:\datasets\huge-sample\segWalk", path_csv)
