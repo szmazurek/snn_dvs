@@ -7,7 +7,6 @@ from PIL import Image
 from typing import Tuple
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from spikingjelly.activation_based import neuron, functional, surrogate, layer
 import wandb
 import os
@@ -59,7 +58,7 @@ class SNN(nn.Module):
         return x_seq
 
 
-class PredictionRGBDataset(Dataset):
+class CarlaRGBDataset(Dataset):
     def __init__(self, targ_dir: str) -> None:
 
         self.all_folders = [os.path.join(targ_dir, directory) for directory in os.listdir(targ_dir)]
@@ -85,9 +84,6 @@ class PredictionRGBDataset(Dataset):
         label_tensor = torch.tensor(label_list).unsqueeze(1)
         name_sample = os.path.basename(folder_path)
         return images_tensor, label_tensor, name_sample
-
-
-
 
 
 class PredictionDvsDataset(Dataset):
@@ -132,36 +128,30 @@ def check_labels(_label, _file_output):
 def f1_score(_pred, _target):
     pred = _pred.view(-1)
     target = _target.view(-1)
-   # print(pred.shape)
-   # print(target.shape)
     tp = torch.sum((pred == 1) & (target == 1)).float()
     fp = torch.sum((pred == 1) & (target == 0)).float()
     fn = torch.sum((pred == 0) & (target == 1)).float()
     tn = torch.sum((pred == 0) & (target == 0)).float()
-    #print(tp, tn, fp, fn)
     precision = tp / (tp + fp + 1e-10)
     recall = tp / (tp + fn + 1e-10)
-    #print(precision,recall)
     _f1 = 2 * (precision * recall) / (precision + recall + 1e-10)
 
     return _f1.item()
 
 
 def main():
-
     wandb.init(
-        project="Dataset_Overview",
+        project="Dataset_Overview_DVS",
         entity="snn_team"
     )
     snn = "LIF"
     neurons = 50
     activation = "SIGMOID"
-    epochs = 35
     neurons2 = 200
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    datasetrgb = PredictionRGBDataset(r"/home/plgkrzysjed1/datasets/dataset_prediction_rgb")
+    datasetrgb = CarlaRGBDataset(r"/home/plgkrzysjed1/datasets/dataset_prediction_rgb")
     dataset = PredictionDvsDataset(r"/home/plgkrzysjed1/datasets/dataset_prediction")
 
     test_data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=12, pin_memory=True)
@@ -178,7 +168,6 @@ def main():
         for (img, label, name), (img_rgb, label_rgb, name_rgb) in zip(test_data_loader,test_data_loader_rgb):
             label = label.to(device)
             label_shifted = torch.roll(label, shifts=-30, dims=1)
-            label_onehot_shifted = F.one_hot(label_shifted, 2).float()
 
             img = img.permute(1, 0, 2, 3, 4)  # [B, T, C, H, W] --> [T, B, C, H, W]
             img = img.to(device).float()
@@ -189,24 +178,20 @@ def main():
             out_fr = out_fr.unsqueeze(0).permute(2, 1, 0, 3)  # [1, T, B, 2] --> [B, T, 1, 2]
             pred = torch.argmax(out_fr, dim=3)
 
-            l = nn.BCELoss()
-            s = nn.Softmax(dim=3)
-            loss = l(s(out_fr), label_onehot_shifted.float())
-
             test_f1 = f1_score(pred, label_shifted.int())
 
-            labell=[]
-            predd=[]
+            label_list = []
+            pred_list = []
             functional.reset_net(net)
             # img [T, B, C, H, W] --> [T, C, H, W]
             for i, (ima,ima_rgb, l, lshift, lpred) in enumerate(
-                    zip(img.squeeze(1),img_rgb.squeeze(1), label.squeeze(0).cpu(), label_shifted.squeeze(0).cpu(), pred.squeeze(0).cpu())):
+                    zip(img.squeeze(1), img_rgb.squeeze(1), label.squeeze(0).cpu(), label_shifted.squeeze(0).cpu(), pred.squeeze(0).cpu())):
                 mask_image = wandb.Image(ima, caption=f"Frame number: {i} | Label: {str(l.item())} | Label_shifted: "
                                                       f"{str(lshift.item())} | Prediction: {str(lpred.item())}")
                 mask_image_rgb = wandb.Image(ima_rgb, caption=f"Frame number: {i} | Label: {str(l.item())} | Label_shifted:"
                                                               f" {str(lshift.item())} | Prediction: {str(lpred.item())}")
-                labell.append(int(lshift.item()))
-                predd.append(int(lpred.item()))
+                label_list.append(int(lshift.item()))
+                pred_list.append(int(lpred.item()))
                 wandb.log({f"{name[0]}": [mask_image,mask_image_rgb ]})
 
             sample.append([name[0], test_f1])

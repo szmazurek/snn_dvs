@@ -40,16 +40,13 @@ class CSNN(nn.Module):
             layer.Linear(channels * 4 * 4, 2, bias=False),
             nn.Sigmoid())
 
-      #  functional.set_step_mode(self, step_mode='m')
-       # functional.set_backend(self, backend='cupy')
-
     def forward(self, x: torch.Tensor):
         x_seq = self.conv_fc(x)
         x_seq = self.lin_fc(x_seq)
         return x_seq
 
 
-class PredictionRGBDataset1(Dataset):
+class CarlaRGBDataset(Dataset):
     def __init__(self, targ_dir: str) -> None:
 
         self.all_folders = [os.path.join(targ_dir, directory) for directory in os.listdir(targ_dir)]
@@ -105,9 +102,9 @@ def main():
     )
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    datasetrgb = PredictionRGBDataset1(r"/home/plgkrzysjed1/datasets/dataset_prediction_rgb_hq")
+    dataset = CarlaRGBDataset(r"/home/plgkrzysjed1/datasets/dataset_prediction_rgb_hq")
 
-    test_data_loader_rgb = DataLoader(datasetrgb, batch_size=1, shuffle=False, num_workers=12, pin_memory=True)
+    test_data_loader_rgb = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=12, pin_memory=True)
     checkpoint = torch.load("/home/plgkrzysjed1/workbench/data/prediction_version2/DataAnalysis/rgb/checkpoint.pth")
     net = CSNN(4)
     net.load_state_dict(checkpoint['net'])
@@ -121,20 +118,16 @@ def main():
             img = img.to(device).float()
             img = img.squeeze(0)  # [900,1,W,H] T->B
             label = label.squeeze(0)  # [900,1] T->B
-            test_f1 = 0.0
-            #for i, Tsample in enumerate(img):
             out_fr = net(img)  # output [T, 2]
             pred = torch.argmax(out_fr, dim=1)
             test_f1 = f1_score(pred, label)
             label = label.squeeze(1)
             train_acc = (pred == label.int()).float().sum().item()
-            #print(train_acc)
             for i, (frame, l, p) in enumerate(zip(img, label, pred)):
 
                 mask_image = wandb.Image(frame, caption=f"Frame number: {i} | Label: {str(l.item())} | Prediction: {str(p.item())}")
 
                 wandb.log({f"{name[0]}": mask_image})
-            #print(test_f1)
 
             sample.append([name[0], test_f1, train_acc/900])
 
@@ -144,5 +137,4 @@ def main():
 
 
 if __name__ == "__main__":
-
     main()
