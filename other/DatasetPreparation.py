@@ -6,6 +6,7 @@ import csv
 import shutil
 import cv2
 import glob
+from PIL import Image
 
 class DataPreparationToolbox:
 
@@ -57,7 +58,7 @@ class DataPreparationToolbox:
     def create_csv_based_on_filtered_csv(self, path_main_csv, csv_of_filtered_keys, path_to_new_csv):
         labels_dic = self._load_csv(path_main_csv)
         dic_id = self._load_id_filtered(csv_of_filtered_keys)
-        with open(path_new_csv, 'w', newline='') as file:
+        with open(path_to_new_csv, 'w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(("id", "frame.idx", "frame.pedestrian.is_crossing"))
             for key, values in labels_dic.items():
@@ -109,7 +110,7 @@ class DataPreparationToolbox:
                     head, file = os.path.split(frame)
                     folder_name = os.path.split(head)[1]
                     file_no_ext= file.split(".")[0]
-                    num_frame, label =  file_no_ext.split("-")
+                    num_frame, label = file_no_ext.split("-")
                     writer.writerow((folder_name, num_frame, label))
 
 
@@ -185,6 +186,37 @@ class DataPreparationToolbox:
                 else:
                     break
 
+    def unpack_mp4_create_csv(self, path_clips=r"D:\datasets\big-sample\clips", path_to_new_csv= r"D:\datasets\big-sample\data.csv",
+                   path_output=r"D:\datasets\big-sample\segAll"):
+
+        files_mp4 = [f for f in listdir(path_clips) if isfile(join(path_clips, f)) and "mp4" in f]
+        with open(path_to_new_csv, 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(("id", "frame.idx", "frame.pedestrian.is_crossing"))
+            for file_mp4 in files_mp4:
+                base_name, ext = os.path.splitext(file_mp4)
+                base_name_shortened = base_name[:-2]
+
+                new_folder_name = os.path.join(path_output, base_name_shortened)
+                if not os.path.exists(new_folder_name):
+                    os.mkdir(new_folder_name)
+
+                cap = cv2.VideoCapture(os.path.join(path_clips, file_mp4))
+
+                if not cap.isOpened():
+                    print("Error opening video file")
+                frame_id = 0
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if ret:
+                        writer.writerow((base_name_shortened, frame_id, '0'))
+                        resized_frame = cv2.resize(frame, (400, 150))
+                        cv2.imwrite(
+                            os.path.join(path_output, new_folder_name, f'{frame_id}.jpg'), resized_frame)
+                        frame_id += 1
+                    else:
+                        break
+
     def unpack_mp4_based_on_spike_dataset(self, path_clips, path_spike_dataset, path_output):
 
         files_raw = [f for f in listdir(path_clips) if isfile(join(path_clips, f)) and "mp4" in f]
@@ -213,7 +245,7 @@ class DataPreparationToolbox:
 
                 if ret:
                     label_int = self._id_label(spikes_files[frame_id])
-                    resized_frame= cv2.resize(frame,(400,150))
+                    resized_frame = cv2.resize(frame, (400, 150))
                     cv2.imwrite(
                         os.path.join(path_output, new_folder_name, f'{frame_id}-{label_int}.jpg'), resized_frame)
                     frame_id += 1
@@ -226,13 +258,15 @@ class DataPreparationToolbox:
 #  path_csv = r"D:\ProjectsPython\SpikingJelly\small-sample/data.csv"
 
 
-path_clips = r"D:\datasets\huge-sample\clips"
-path_csv = r"D:\datasets\huge-sample\dataWalk.csv"
+path_clips = r"C:\Users\krzys\OneDrive\Pulpit\gfg\output\sss"
+path_csv = r"C:\Users\krzys\OneDrive\Pulpit\gfg\output\sss\dataWalk.csv"
+#path_csv = r"D:\datasets\huge-sample\dataWalk.csv"
 path_spike_dataset= r"D:\datasets\huge-sample\predictionDataset\dataset_prediction"
 path_output = r"D:\datasets\huge-sample\mp4"
-path_dir = r"D:\datasets\huge-sample\mp4Walk"
+path_dir = r"C:\Users\krzys\OneDrive\Pulpit\gfg\output"
 
 d = DataPreparationToolbox()
-d.unpack_mp4(path_clips=path_clips, path_csv=path_csv, path_output=path_dir)
+#d.unpack_mp4(path_clips=path_clips, path_csv=path_csv, path_output=path_dir)
+d.unpack_mp4_create_csv(path_clips=path_clips, path_to_new_csv=path_csv, path_output=path_dir)
 #d.unpack_mp4_based_on_spike_dataset(path_clips, path_spike_dataset, path_output)
 #d.dataset_to_csv("D:\datasets\huge-sample\segWalk", path_csv)
