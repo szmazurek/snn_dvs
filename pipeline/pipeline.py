@@ -1,4 +1,5 @@
 import os
+import shutil
 from os.path import isfile, join
 from os import listdir
 import wandb
@@ -12,7 +13,10 @@ from apng import APNG
 
 class Pipeline:
 
-    def __init__(self, path_clips: str, nn_class_model_rgb: nn.Module, nn_class_model_dvs: nn.Module, dataloader, project_name_wandb: str):
+    def __init__(self, path_clips: str, nn_class_model_rgb: nn.Module, nn_class_model_dvs: nn.Module, dataloader,
+                 project_name_wandb: str):
+
+        self.path_wandb_folder = os.path.join(os.path.abspath(os.getcwd()), "wandb")
         self.path_clips = path_clips
         self.path_clips_rgb = os.path.join(self.path_clips, "rgb")
         self.path_clips_dvs = os.path.join(self.path_clips, "dvs")
@@ -24,10 +28,16 @@ class Pipeline:
         self.dataloader = dataloader
 
     def start(self):
+
         self._unpack_rgb()
         self._unpack_dvs()
         self._run(self.nn_class_model_rgb, self.path_clips_rgb, "Table_Rgb")
         self._run(self.nn_class_model_dvs, self.path_clips_dvs, "Table_Dvs")
+        self._del_folder(self.path_wandb_folder)
+
+    def delete_unpacked_dataset(self):
+        self._del_folder(self.path_clips_rgb)
+        self._del_folder(self.path_clips_dvs)
 
     def _run(self, nn_class_model, path_clips, wandb_table_name="Table"):
         wandb.init(
@@ -52,7 +62,7 @@ class Pipeline:
                     out_fr = out_fr.squeeze(1)
                 pred = torch.argmax(out_fr, dim=1)
                 loss = torch.abs(torch.sub(out_fr[:, 0], out_fr[:, 1]))
-                loss_avg = loss.sum()/len(loss)
+                loss_avg = loss.sum() / len(loss)
 
                 for i, (frame, l, p) in enumerate(zip(img, loss, pred)):
                     mask_image = wandb.Image(frame,
@@ -69,7 +79,7 @@ class Pipeline:
     def _unpack_rgb(self, image_size=(400, 150)):
 
         if not os.path.exists(self.path_clips_rgb):
-            #os.mkdir(self.path_clips_rgb)
+            # os.mkdir(self.path_clips_rgb)
             os.makedirs(self.path_clips_rgb, exist_ok=True)
         else:
             print(f"In '{self.path_clips}' exist 'rgb' folder. Skipping unpack_rgb images.")
@@ -131,3 +141,11 @@ class Pipeline:
 
         print("Successfully unpack_dvs ended")
 
+    def _del_folder(self, path_folder):
+        try:
+            print(f"Deleting {path_folder}")
+            shutil.rmtree(path_folder)
+        except FileNotFoundError:
+            print(f"Cant delete folder {path_folder}, it doesnt exist")
+        except Exception:
+            print("Unexpected Exception")
