@@ -45,7 +45,7 @@ class DvsDataset(Dataset):
 
 
 def main():
-    epochs = 35
+    epochs = 50
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     checkpoint_folder_path = r"/data/prediction_version2/DataAnalysis"
     dataset = DvsDataset(r"/home/plgkrzysjed1/datasets/dataset_prediction")
