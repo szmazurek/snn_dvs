@@ -57,7 +57,7 @@ if __name__ == "__main__":
     net.load_state_dict(checkpoint['net'])
     optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
     net.to(device)
-    epochs = 80
+    epochs = 50
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)
     max_f1 = 0
     for epoch in range(0, epochs):
