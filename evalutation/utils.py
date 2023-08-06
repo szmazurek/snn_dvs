@@ -16,7 +16,7 @@ from models import CNN_1 as CNN
 
 
 
-def train_val_dataset(dataset, val_split=0.25):
+def train_val_dataset(dataset, val_split=0.3):
     train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split)
     _datasets = {'train': Subset(dataset, train_idx), 'val': Subset(dataset, val_idx)}
     return _datasets
