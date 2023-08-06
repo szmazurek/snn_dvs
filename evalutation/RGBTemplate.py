@@ -21,8 +21,9 @@ class RGBDataset(Dataset):
         self.transform = transforms.Compose([
                 transforms.Resize((150, 400)),
                 transforms.RandomHorizontalFlip(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                transforms.PILToTensor()])
+                transforms.PILToTensor(),
+                transforms.ConvertImageDtype(torch.float),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
     def load_image(self, image) -> torch.Tensor:
         img = Image.open(image)
