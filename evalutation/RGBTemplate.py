@@ -56,7 +56,7 @@ if __name__ == "__main__":
     checkpoint = torch.load("/home/plgkrzysjed1/workbench/data/prediction_version2/DataAnalysis/rgb/checkpoint1.pth")
     net = CNN()
     net.load_state_dict(checkpoint['net'])
-    optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
+    optimizer = torch.optim.SGD(net.parameters(), lr=1e-3)
     net.to(device)
     epochs = 50
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)
@@ -80,11 +80,9 @@ if __name__ == "__main__":
             pred_list = torch.cat((pred_list, pred), dim=0)
             label_list = torch.cat((label_list, label), dim=0)
 
-            l = nn.BCELoss()
-            s = nn.Softmax(dim=1)
-
-            loss = l(s(out_fr), label_onehot_shifted.float())
-            train_loss += loss.item() * label.numel()
+            l = nn.MSELoss()
+            loss = l(out_fr, label_onehot_shifted.float())
+            train_loss += loss.item()
             train_samples += label.numel()
             loss.backward()
             optimizer.step()
@@ -114,13 +112,10 @@ if __name__ == "__main__":
                 pred = torch.argmax(out_fr, dim=1)
                 pred_list = torch.cat((pred_list, pred), dim=0)
                 label_list = torch.cat((label_list, label), dim=0)
-
-                l = nn.BCELoss()
-                s = nn.Softmax(dim=1)
-
-                loss = l(s(out_fr), label_onehot_shifted.float())
+                l = nn.MSELoss()
+                loss = l(out_fr, label_onehot_shifted.float())
                 test_samples += label.numel()
-                test_loss += loss.item() * label.numel()
+                test_loss += loss.item()
 
         test_acc = (torch.Tensor(pred_list) == torch.Tensor(label_list)).sum().item()
         test_f1 = f1_score(torch.Tensor(pred_list), torch.Tensor(label_list))
