@@ -41,6 +41,6 @@ def f1_score(_pred, _target):
     return _f1.item()
 
 
-def save_model(net, folder_path):
+def save_model(net, folder_path, file_name):
     checkpoint = {'net': net.state_dict()}
-    torch.save(checkpoint, os.path.join(folder_path, 'checkpoint.pth'))
+    torch.save(checkpoint, os.path.join(folder_path, file_name))
