@@ -106,7 +106,8 @@ if __name__ == "__main__":
                 train_loss /= train_samples
                 train_acc /= train_samples
                 print("Train", epoch, train_acc, train_f1)
-
+                
+                lr_scheduler.step()
 
                 net.eval()
                 test_loss = 0
