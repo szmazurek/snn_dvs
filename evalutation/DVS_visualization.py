@@ -15,12 +15,19 @@ class DvsDataset(Dataset):
         self.all_folders = [os.path.join(targ_dir, directory) for directory in os.listdir(targ_dir)]
         self.random_flip = 0
         self.transform = transforms.Compose([
-            transforms.RandomHorizontalFlip(self.random_flip),
+            transforms.RandomHorizontalFlip(0),
+            transforms.Resize((150, 400), interpolation=Image.NEAREST),
+            transforms.PILToTensor()])
+        self.transform_flip = transforms.Compose([
+            transforms.RandomHorizontalFlip(1),
             transforms.Resize((150, 400), interpolation=Image.NEAREST),
             transforms.PILToTensor()])
 
     def load_image(self, image) -> Image.Image:
-        return self.transform(Image.open(image))
+        if self.random_flip:
+            return self.transform(Image.open(image))
+        else:
+            return self.transform_flip(Image.open(image))
 
     def __len__(self) -> int:
         return len(self.all_folders)
