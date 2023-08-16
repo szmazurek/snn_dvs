@@ -87,31 +87,30 @@ class SNN_2(nn.Module):
         x_seq = self.lin_fc(x_seq)
         return x_seq
 
-
 class CNN_2(nn.Module):
-    def __init__(self, channels: int):
+    def __init__(self):
         super().__init__()
 
         self.conv_fc = nn.Sequential(
-            layer.Conv2d(3, channels, kernel_size=3, padding=1, bias=False),
-            layer.BatchNorm2d(channels),
+            layer.Conv2d(3, 6, kernel_size=3, padding=1, bias=False),
+            layer.BatchNorm2d(6),
             nn.ReLU(),
             layer.MaxPool2d(2, 2),
-            layer.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
-            layer.BatchNorm2d(channels),
+            layer.Conv2d(6, 6, kernel_size=3, padding=1, bias=False),
+            layer.BatchNorm2d(6),
             nn.ReLU(),
             layer.MaxPool2d(2, 2),
-            layer.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
-            layer.BatchNorm2d(channels),
+            layer.Conv2d(6, 6, kernel_size=3, padding=1, bias=False),
+            layer.BatchNorm2d(6),
             nn.ReLU(),
             layer.MaxPool2d(2, 2))
 
         self.lin_fc = nn.Sequential(
             layer.Flatten(),
-            layer.Linear(4 * 50 * 18, channels * 4 * 4, bias=False),
+            layer.Linear(5400, 100, bias=False),
             nn.ReLU(),
 
-            layer.Linear(channels * 4 * 4, 2, bias=False),
+            layer.Linear(100, 2, bias=False),
             nn.Sigmoid())
 
     def forward(self, x: torch.Tensor):
