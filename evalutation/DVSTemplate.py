@@ -45,14 +45,20 @@ class DvsDataset(Dataset):
 
 
 def main():
-    epochs = 50
+    wandb.init(
+        project="SNN_1_DVS_Default",
+        entity="snn_team"
+    )
+
+    epochs = 500
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    checkpoint_folder_path = r"/data/prediction_version2/DataAnalysis"
-    dataset = DvsDataset(r"/home/plgkrzysjed1/datasets/dataset_prediction")
+    checkpoint_file_save = "checkpoint_DVS_SNN1.pth"
+    dataset = DvsDataset(r"/home/plgkrzysjed1/datasets/dataset_dvs")
+    checkpoint_folder_path = r"/home/plgkrzysjed1/workbench/data/SpikingScripts/evalutation/save"
     dataset = train_val_dataset(dataset)
 
-    train_data_loader = DataLoader(dataset["train"], batch_size=1, shuffle=True, num_workers=12, pin_memory=True)
-    test_data_loader = DataLoader(dataset["val"], batch_size=1, shuffle=True, num_workers=12, pin_memory=True)
+    train_data_loader = DataLoader(dataset["train"], batch_size=1, shuffle=True, num_workers=12)
+    test_data_loader = DataLoader(dataset["val"], batch_size=1, shuffle=False, num_workers=12)
 
     #  Converter
     # coverter= ann2snn.Converter(train_data_loader)
@@ -84,10 +90,9 @@ def main():
             out_fr = out_fr.unsqueeze(0).permute(2, 1, 0, 3)  # [1, T, B, 2] --> [B, T, 1, 2]
             pred = torch.argmax(out_fr, dim=3)
 
-            l = nn.BCELoss()
-            s = nn.Softmax(dim=3)
+            l = nn.MSELoss()
 
-            loss = l(s(out_fr), label_onehot_shifted.float())
+            loss = l(out_fr, label_onehot_shifted.float())
 
             loss.backward()
             optimizer.step()
@@ -128,9 +133,9 @@ def main():
                 out_fr = out_fr.unsqueeze(0).permute(2, 1, 0, 3)  # [1, T, B, 2] --> [B, T, 1, 2]
                 pred = torch.argmax(out_fr, dim=3)
 
-                l = nn.BCELoss()
-                s = nn.Softmax(dim=3)
-                loss = l(s(out_fr), label_onehot_shifted.float())
+                l = nn.MSELoss()
+
+                loss = l(out_fr, label_onehot_shifted.float())
 
                 test_samples += label.numel()
                 test_loss += loss.item() * label.numel()
@@ -147,13 +152,10 @@ def main():
                    "test_acc": test_acc, "test_loss": test_loss, "test_f1": test_f1})
         if float(max_f1) < float(test_f1):
             max_f1 = test_f1
-            save_model(net, checkpoint_folder_path)
+            save_model(net, checkpoint_folder_path, checkpoint_file_save)
 
     wandb.log({"max_f1": max_f1})
 
 
 if __name__ == "__main__":
-    wandb.init(
-        project="SNN_ARCH_1_Default",
-        entity="snn_team")
     main()
