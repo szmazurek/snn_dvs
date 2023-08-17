@@ -60,21 +60,21 @@ class SNN_2(nn.Module):
 
         self.conv_fc = nn.Sequential(
             layer.Conv2d(1, 6, kernel_size=3, padding=1, bias=False),
-            layer.ThresholdDependentBatchNorm2d(6, 6),
+            layer.BatchNorm2d(6),
             neuron.LIFNode(surrogate_function=surrogate.Sigmoid()),
             layer.MaxPool2d(2, 2),
             layer.Conv2d(6, 6, kernel_size=3, padding=1, bias=False),
-            layer.ThresholdDependentBatchNorm2d(6, 6),
+            layer.BatchNorm2d(6),
             neuron.LIFNode(surrogate_function=surrogate.Sigmoid()),
             layer.MaxPool2d(2, 2),
             layer.Conv2d(6, 6, kernel_size=3, padding=1, bias=False),
-            layer.ThresholdDependentBatchNorm2d(6, 6),
+            layer.BatchNorm2d(6),
             neuron.LIFNode(surrogate_function=surrogate.Sigmoid()),
             layer.MaxPool2d(2, 2))
 
         self.lin_fc = nn.Sequential(
             layer.Flatten(),
-            layer.Linear(4 * 50 * 6, 100, bias=False),
+            layer.Linear(5400, 100, bias=False),
             neuron.LIFNode(surrogate_function=surrogate.Sigmoid()),
             layer.Linear(100, 2, bias=False),
             neuron.LIFNode(surrogate_function=surrogate.Sigmoid()))
