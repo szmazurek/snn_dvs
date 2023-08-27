@@ -55,7 +55,7 @@ class CNN_1(nn.Module):
 
 
 class SNN_2(nn.Module):
-    def __init__(self, channels: int):
+    def __init__(self):
         super().__init__()
 
         self.conv_fc = nn.Sequential(
