@@ -1,8 +1,8 @@
+from spikingjelly.activation_based.model import spiking_resnet
 import torch
 import torch.nn as nn
-from spikingjelly.activation_based import neuron, functional, surrogate, layer
-
-
+from spikingjelly.activation_based import surrogate, neuron, functional, layer
+from torchvision.models import resnet18, ResNet18_Weights
 
 class SNN_1(nn.Module):
     def __init__(self):
@@ -118,4 +118,15 @@ class CNN_2(nn.Module):
         x_seq = self.lin_fc(x_seq)
         return x_seq
 
+def Resnet18_DVS():
+    net = spiking_resnet.spiking_resnet18(pretrained=True, spiking_neuron=neuron.LIFNode,
+                                          surrogate_function=surrogate.Sigmoid(), detach_reset=True)
+    net.conv1 = layer.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+    net.fc = layer.Linear(512, 2, bias=True)
+    return net
 
+
+def Resnet18():
+    net = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+    net.fc = nn.Linear(512, 2, bias=True)
+    return net
