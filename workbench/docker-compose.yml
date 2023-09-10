@@ -1,0 +1,17 @@
+    version: '3'
+    services:
+      container:
+        image: snn_workbench:latest
+        container_name: SnnTrainer
+        ports:
+          - "8000:22"
+        volumes:
+          - /path/to/datasets:/home/user/datasets
+        deploy:
+          resources:
+            reservations:
+              devices:
+                - driver: nvidia
+                  device_ids: ['0']
+                  capabilities: [gpu]
+        shm_size: 16g
