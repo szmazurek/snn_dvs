@@ -1,84 +1,35 @@
 import numpy as np
-
 import wandb
-import os
-import glob
-import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.transforms as transforms
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from utils import train_val_dataset, save_model, f1_score as f1
 from spikingjelly.activation_based import functional
-from PIL import Image
-from typing import Tuple
-from torchvision.models import efficientnet_v2_s
-from spikingjelly.activation_based import ann2snn
 from models import SNN_1 as SNN
-
-
-
-class DvsDataset(Dataset):
-    def __init__(self, targ_dir: str) -> None:
-        self.all_folders = [os.path.join(targ_dir, directory) for directory in os.listdir(targ_dir)]
-        self.random_flip = 0
-        self.transform = transforms.Compose([
-            transforms.RandomHorizontalFlip(0),
-            transforms.Resize((150, 400), interpolation=Image.NEAREST),
-            transforms.PILToTensor()])
-        self.transform_flip = transforms.Compose([
-            transforms.RandomHorizontalFlip(1),
-            transforms.Resize((150, 400), interpolation=Image.NEAREST),
-            transforms.PILToTensor()])
-
-    def load_image(self, image) -> Image.Image:
-        if self.random_flip:
-            return self.transform(Image.open(image))
-        else:
-            return self.transform_flip(Image.open(image))
-
-    def __len__(self) -> int:
-        return len(self.all_folders)
-
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
-        self.random_flip = random.getrandbits(1)
-        folder_path = self.all_folders[index]
-        file_list = glob.glob(os.path.join(folder_path, "*.png"))
-        file_list_sorted = sorted(file_list, key=lambda x: int(os.path.splitext(os.path.basename(x))[0].split("-")[0]))
-        images_tensor = torch.cat([self.load_image(image).unsqueeze(0) for image in file_list_sorted])
-
-        label_list = [int(str(image)[-5]) for image in file_list_sorted]
-        label_tensor = torch.tensor(label_list).unsqueeze(1)
-
-        return images_tensor, label_tensor
-
-
-
+from data_loaders import DvsDataset
 
 
 def main():
     wandb.init(
-        project="SNN_1_DVS_Default",
+        project="Project_name",
         entity="snn_team"
     )
 
-    epochs = 10000
+    epochs = 1000
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    checkpoint_file_save = "checkpoint_DVS_SNN1.pth"
-    dataset = DvsDataset(r"/home/plgkrzysjed1/datasets/dataset_dvs")
-    checkpoint_folder_path = r"/home/plgkrzysjed1/workbench/data/SpikingScripts/evalutation/save"
+    checkpoint_file_save = "checkpoint.pth"
+    checkpoint_folder_path = r"checkpoint_folder_path"
+
+    dataset = DvsDataset(r"dataset_dvs_path", decimation=2)
     dataset = train_val_dataset(dataset)
 
     train_data_loader = DataLoader(dataset["train"], batch_size=1, shuffle=True, num_workers=12)
     test_data_loader = DataLoader(dataset["val"], batch_size=1, shuffle=False, num_workers=12)
 
-    #  Converter
-    # coverter= ann2snn.Converter(train_data_loader)
-    # eff_snn= coverter(efficientnet_v2_s)
     net = SNN()
 
-    optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(net.parameters(), lr=0.001, weight_decay=0.01)
     net.to(device)
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)
     max_f1 = 0.0
@@ -120,7 +71,7 @@ def main():
 
         train_loss /= train_samples
         train_acc /= train_samples
-        train_f1 = f1(torch.Tensor(train_f1_list),torch.Tensor(train_label_list))
+        train_f1 = f1(torch.Tensor(train_f1_list), torch.Tensor(train_label_list))
 
         print("Train", epoch, train_acc, train_f1)
 
