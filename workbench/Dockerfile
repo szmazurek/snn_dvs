@@ -35,14 +35,12 @@ RUN groupadd -g ${GID} ${USERNAME} && \
     echo "${USERNAME}:${USERNAME}" | chpasswd && \
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
 
-# Switch to the non-root user
-USER ${USERNAME}
-
-# Set up SSH key and working directory
-RUN mkdir -p /home/plgkrzysjed1/.ssh
-RUN mkdir -p ${HOME}/workbench
-COPY /.ssh/id_rsa.pub /home/plgkrzysjed1/.ssh/
-COPY /.ssh/authorized_keys /home/plgkrzysjed1/.ssh/
+# Switch to the non-root user and set up SSH key and working directory
+# USER ${USERNAME}
+# RUN mkdir -p /home/plgkrzysjed1/.ssh
+# RUN mkdir -p ${HOME}/workbench
+# COPY /.ssh/id_rsa.pub /home/plgkrzysjed1/.ssh/
+# COPY /.ssh/authorized_keys /home/plgkrzysjed1/.ssh/
 
 # Start SSH service
 USER root
