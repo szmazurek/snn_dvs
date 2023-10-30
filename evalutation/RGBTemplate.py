@@ -9,19 +9,20 @@ from data_loaders import RGBDataset
 
 
 def main():
-    wandb.init(
-        project="Project_name",
-        entity="snn_team"
-    )
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    wandb.init(project="Project_name", entity="snn_team")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     checkpoint_folder_path = r"checkpoint_folder_path"
     checkpoint_file_save = "checkpoint.pth"
 
-    dataset = RGBDataset(r"dataset_rgb_path")
+    dataset = RGBDataset(r"dataset_weather_rgb")
     dataset = train_val_dataset(dataset)
-    train_data_loader = DataLoader(dataset["train"], batch_size=5000, shuffle=True, num_workers=2)
-    test_data_loader = DataLoader(dataset["val"], batch_size=5000, shuffle=False, num_workers=2)
+    train_data_loader = DataLoader(
+        dataset["train"], batch_size=5000, shuffle=True, num_workers=2
+    )
+    test_data_loader = DataLoader(
+        dataset["val"], batch_size=5000, shuffle=False, num_workers=2
+    )
 
     net = CNN()
 
@@ -90,8 +91,16 @@ def main():
         test_loss /= test_samples
         test_acc /= test_samples
         print("Test", epoch, test_acc, test_f1)
-        wandb.log({"train_acc": train_acc, "train_loss": train_loss, "train_f1": train_f1,
-                   "test_acc": test_acc, "test_loss": test_loss, "test_f1": test_f1})
+        wandb.log(
+            {
+                "train_acc": train_acc,
+                "train_loss": train_loss,
+                "train_f1": train_f1,
+                "test_acc": test_acc,
+                "test_loss": test_loss,
+                "test_f1": test_f1,
+            }
+        )
         if float(max_f1) < float(test_f1):
             max_f1 = test_f1
             save_model(net, checkpoint_folder_path, checkpoint_file_save)
