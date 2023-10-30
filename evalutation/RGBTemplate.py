@@ -1,110 +1,185 @@
 import wandb
 import torch
+import os
+import numpy as np
+import random
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from utils import train_val_dataset, f1_score, save_model
-from models import CNN_1 as CNN
+from utils import train_val_dataset
+from sklearn.model_selection import StratifiedKFold
+from models import Resnet18
 from data_loaders import RGBDataset
+from torchmetrics import Accuracy, F1Score, AUROC
+from torch.utils.data import Subset
+
+api_key_file = open("./wandb_api_key.txt", "r")
+API_KEY = api_key_file.read()
+api_key_file.close()
+os.environ["WANDB_API_KEY"] = API_KEY
+
+random.seed(0)
+np.random.seed(0)
+torch.manual_seed(0)
 
 
 def main():
-    wandb.init(project="Project_name", entity="snn_team")
+    # wandb.init(
+    #     project="pedestrian_surrogate",
+    #     entity="mazurek",
+    #     name="rgb_weather_resnet_default_good_res_seed_0",
+    # )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     checkpoint_folder_path = r"checkpoint_folder_path"
     checkpoint_file_save = "checkpoint.pth"
 
-    dataset = RGBDataset(r"dataset_weather_rgb")
-    dataset = train_val_dataset(dataset)
-    train_data_loader = DataLoader(
-        dataset["train"], batch_size=5000, shuffle=True, num_workers=2
-    )
-    test_data_loader = DataLoader(
-        dataset["val"], batch_size=5000, shuffle=False, num_workers=2
-    )
+    full_dataset = RGBDataset(r"datasets/dataset_weather_rgb")
+    labels = full_dataset.all_labels
+    data_indices = np.arange(len(labels))
+    skf = StratifiedKFold(n_splits=10)
+    for j, (train_idx, test_idx) in enumerate(skf.split(data_indices, labels)):
+        print(f"Fold {j+1}")
+        train_dataset = Subset(full_dataset, train_idx)
+        test_dataset = Subset(full_dataset, test_idx)
+        train_val_ds = train_val_dataset(train_dataset, val_split=0.15)
+        print(f"Dataset sizes")
+        print(f"Train {len(train_val_ds['train'])}")
+        print(f"Val {len(train_val_ds['val'])}")
+        print(f"Test {len(test_dataset)}")
 
-    net = CNN()
+        train_data_loader = DataLoader(
+            train_val_ds["train"],
+            batch_size=1024,
+            shuffle=True,
+            num_workers=4,
+            pin_memory=True,
+            prefetch_factor=1,
+        )
+        val_data_loader = DataLoader(
+            train_val_ds["val"],
+            batch_size=512,
+            shuffle=False,
+            num_workers=4,
+            prefetch_factor=1,
+            pin_memory=True,
+        )
+        test_data_loader = DataLoader(
+            test_dataset,
+            batch_size=512,
+            shuffle=False,
+            num_workers=4,
+            prefetch_factor=1,
+            pin_memory=True,
+        )
 
-    optimizer = torch.optim.Adam(net.parameters(), lr=1e-3, weight_decay=0.01)
-    net.to(device)
-    epochs = 1000
-    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)
-    max_f1 = 0.0
-    for epoch in range(0, epochs):
-        print(epoch)
-        net.train()
-        train_loss = 0
-        train_samples = 0
-        label_list = torch.Tensor().to(device)
-        pred_list = torch.Tensor().to(device)
-        for img, label in train_data_loader:
-            optimizer.zero_grad()
-            label = label.to(device)
-            label_onehot = F.one_hot(label, 2).float()
-            img = img.to(device).float()
+        net = Resnet18()
+        net.to(device)
+        optimizer = torch.optim.AdamW(net.parameters(), lr=1e-4, weight_decay=0.1)
 
-            out_fr = net(img)
-            pred = torch.argmax(out_fr, dim=1)
-            pred_list = torch.cat((pred_list, pred), dim=0)
-            label_list = torch.cat((label_list, label), dim=0)
-            l = nn.MSELoss()
+        # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)
+        max_f1 = 0.0
+        neg_count, pos_count = torch.unique(
+            train_val_ds["train"].all_labels, return_counts=True
+        )[1]
+        print(torch.unique(train_val_ds["train"].all_labels, return_counts=True))
+        pos_weight = 4.8
+        pos_weight_tensor = torch.full([1], pos_weight)
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor).to(device)
+        accuracy_metric = Accuracy("binary").to(device)
+        f1_metric = F1Score("binary").to(device)
+        auroc_metric = AUROC("binary").to(device)
+        epochs = 10
+        # wandb.init(
+        #     project="pedestrian_surrogate",
+        #     entity="mazurek",
+        #     name="rgb_weather_resnet_default_good_res_seed_0",
+        # )
 
-            loss = l(out_fr, label_onehot.float())
-            train_loss += loss.item() * label.numel()
-            train_samples += label.numel()
-            loss.backward()
-            optimizer.step()
+        for epoch in range(0, epochs):
+            net.train()
+            train_loss = 0
+            label_list = torch.Tensor().to(device)
+            pred_list = torch.Tensor().to(device)
+            for i, (img, label) in enumerate(train_data_loader):
+                optimizer.zero_grad()
+                label = label.to(device)
+                img = img.to(device).float()
 
-        train_acc = (torch.Tensor(pred_list) == torch.Tensor(label_list)).sum().item()
-        train_f1 = f1_score(torch.Tensor(pred_list), torch.Tensor(label_list))
+                out_fr = net(img).squeeze()
+                pred_list = torch.cat((pred_list, out_fr.detach()), dim=0)
+                label_list = torch.cat((label_list, label), dim=0)
 
-        train_loss /= train_samples
-        train_acc /= train_samples
-        print("Train", epoch, train_acc, train_f1)
+                loss = loss_fn(out_fr, label.float())
+                train_loss += loss.detach().item()
+                loss.backward()
+                optimizer.step()
+                if i % 10 == 0:
+                    print(f"Processed {i} batches")
+            train_acc = accuracy_metric(pred_list, label_list)
+            train_f1 = f1_metric(pred_list, label_list)
+            train_auroc = auroc_metric(pred_list, label_list)
 
-        lr_scheduler.step()
+            print(f"Train loss {train_loss/(i+1)}")
+            print(
+                f"Train epoch {epoch}, acc {train_acc}, f1 {train_f1}, auroc {train_auroc}"
+            )
+
+            net.eval()
+            test_loss = 0
+            label_list = torch.Tensor().to(device)
+            pred_list = torch.Tensor().to(device)
+            with torch.no_grad():
+                for n, (img, label) in enumerate(val_data_loader):
+                    label = label.to(device)
+                    img = img.to(device).float()
+
+                    out_fr = net(img).squeeze()
+                    pred_list = torch.cat((pred_list, out_fr.detach()), dim=0)
+                    label_list = torch.cat((label_list, label), dim=0)
+                    loss = loss_fn(out_fr, label.float())
+                    test_loss += loss.detach().item()
+            test_acc = accuracy_metric(pred_list, label_list)
+            test_f1 = f1_metric(pred_list, label_list)
+            test_auroc = auroc_metric(pred_list, label_list)
+            print(f"Val loss {test_loss/(n+1)}")
+            print(
+                f"Val epoch {epoch}, acc {test_acc}, f1 {test_f1}, auroc {test_auroc}"
+            )
 
         net.eval()
         test_loss = 0
-        test_samples = 0
         label_list = torch.Tensor().to(device)
         pred_list = torch.Tensor().to(device)
         with torch.no_grad():
-            for img, label in test_data_loader:
+            for n, (img, label) in enumerate(test_data_loader):
                 label = label.to(device)
-                label_onehot_shifted = F.one_hot(label, 2).float()
                 img = img.to(device).float()
 
-                out_fr = net(img)
-                pred = torch.argmax(out_fr, dim=1)
-                pred_list = torch.cat((pred_list, pred), dim=0)
+                out_fr = net(img).squeeze()
+                pred_list = torch.cat((pred_list, out_fr.detach()), dim=0)
                 label_list = torch.cat((label_list, label), dim=0)
-
-                l = nn.MSELoss()
-                loss = l(out_fr, label_onehot_shifted.float())
-                test_samples += label.numel()
-                test_loss += loss.item() * label.numel()
-
-        test_acc = (torch.Tensor(pred_list) == torch.Tensor(label_list)).sum().item()
-        test_f1 = f1_score(torch.Tensor(pred_list), torch.Tensor(label_list))
-        test_loss /= test_samples
-        test_acc /= test_samples
-        print("Test", epoch, test_acc, test_f1)
-        wandb.log(
-            {
-                "train_acc": train_acc,
-                "train_loss": train_loss,
-                "train_f1": train_f1,
-                "test_acc": test_acc,
-                "test_loss": test_loss,
-                "test_f1": test_f1,
-            }
-        )
-        if float(max_f1) < float(test_f1):
-            max_f1 = test_f1
-            save_model(net, checkpoint_folder_path, checkpoint_file_save)
-    wandb.finish()
+                loss = loss_fn(out_fr, label.float())
+                test_loss += loss.detach().item()
+        test_acc = accuracy_metric(pred_list, label_list)
+        test_f1 = f1_metric(pred_list, label_list)
+        test_auroc = auroc_metric(pred_list, label_list)
+        print(f"Test loss {test_loss/(n+1)}")
+        print(f"Test epoch {epoch}, acc {test_acc}, f1 {test_f1}, auroc {test_auroc}")
+        # wandb.log(
+        #     {
+        #         "train_acc": train_acc,
+        #         "train_loss": train_loss,
+        #         "train_f1": train_f1,
+        #         "test_acc": test_acc,
+        #         "test_loss": test_loss,
+        #         "test_f1": test_f1,
+        #     }
+        # )
+        # if float(max_f1) < float(test_f1):
+        #     max_f1 = test_f1
+        #     save_model(net, checkpoint_folder_path, checkpoint_file_save)
+        # wandb.finish()
 
 
 if __name__ == "__main__":

@@ -1,2 +1,5 @@
 datasets/
 *.sh
+wandb*
+output*
+*pycache*
