@@ -131,7 +131,7 @@ def Resnet18_DVS():
     net.conv1 = layer.Conv2d(
         1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
     )
-    net.fc = layer.Linear(512, 2, bias=True)
+    net.fc = layer.Linear(512, 1)
     return net
 
 
