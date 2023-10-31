@@ -135,7 +135,11 @@ def Resnet18_DVS():
     return net
 
 
-def Resnet18():
+def Resnet18(dvs_mode=False):
     net = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
     net.fc = nn.Linear(512, 1)
+    if dvs_mode:
+        net.conv1 = nn.Conv2d(
+            1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+        )
     return net
