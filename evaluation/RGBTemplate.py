@@ -80,7 +80,7 @@ def main_kfold(args):
             pin_memory=True,
         )
 
-        net = Resnet18()
+        net = Resnet18(args.dvs_mode)
         net.to(device)
         optimizer = torch.optim.AdamW(
             net.parameters(), lr=args.lr, weight_decay=args.weight_decay
@@ -203,6 +203,7 @@ def normal_training(args):
 
     full_dataset = RGBDataset(args.dataset_path)
     labs = torch.tensor(full_dataset.all_labels)
+    print(labs)
     neg_count, pos_count = torch.unique(labs, return_counts=True)[1]
     pos_weight = neg_count / pos_count
     labels = full_dataset.all_labels
@@ -242,7 +243,7 @@ def normal_training(args):
         prefetch_factor=1,
         pin_memory=True,
     )
-    net = Resnet18()
+    net = Resnet18(args.dvs_mode)
     net.to(device)
     optimizer = torch.optim.AdamW(
         net.parameters(), lr=args.lr, weight_decay=args.weight_decay
@@ -365,6 +366,7 @@ if __name__ == "__main__":
     parser.add_argument("--test_size", type=float, default=0.15)
     parser.add_argument("--val_size", type=float, default=0.15)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--dvs_mode", action="store_true", default=False)
     parser.add_argument("--checkpoint_folder_path", type=str, default="checkpoint_path")
     parser.add_argument("--checkpoint_file_save", type=str, default="checkpoint.pth")
     parser.add_argument("--wandb", action="store_true", default=False)

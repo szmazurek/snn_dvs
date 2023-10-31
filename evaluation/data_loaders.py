@@ -13,23 +13,28 @@ class RGBDataset(Dataset):
         self.all_folders = [
             os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
         ]
-        self.all_files = [
+        all_files_png = [
+            glob.glob(os.path.join(folders, "*.png")) for folders in self.all_folders
+        ]
+        all_files_jpg = [
             glob.glob(os.path.join(folders, "*.jpg")) for folders in self.all_folders
         ]
+        self.all_files = all_files_png + all_files_jpg
         self.all_files = [e for sub in self.all_files for e in sub]
+
         self.all_labels = [
             int(os.path.splitext(os.path.basename(file_path))[0].split("-")[1])
             for file_path in self.all_files
         ]
         self.transform = transforms.Compose(
             [
-                transforms.Resize((150, 400)),
+                transforms.Resize((150, 400), interpolation=Image.NEAREST),
                 transforms.RandomHorizontalFlip(),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
+                # transforms.Normalize(
+                #     mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                # ),
             ]
         )
 
