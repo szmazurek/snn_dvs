@@ -5,6 +5,7 @@ import numpy as np
 import random
 import torch.nn as nn
 import torch.nn.functional as F
+from argparse import ArgumentParser
 from torch.utils.data import DataLoader
 from utils import train_val_dataset
 from sklearn.model_selection import StratifiedKFold
@@ -23,7 +24,7 @@ np.random.seed(0)
 torch.manual_seed(0)
 
 
-def main():
+def main_kfold():
     # wandb.init(
     #     project="pedestrian_surrogate",
     #     entity="mazurek",
