@@ -35,11 +35,14 @@ def main():
     checkpoint_file_save = "checkpoint.pth"
 
     full_dataset = RGBDataset(r"datasets/dataset_weather_rgb")
+    labs = torch.tensor(full_dataset.all_labels)
+    neg_count, pos_count = torch.unique(labs, return_counts=True)[1]
+    pos_weight = neg_count / pos_count
     labels = full_dataset.all_labels
     data_indices = np.arange(len(labels))
     skf = StratifiedKFold(n_splits=10)
-    for j, (train_idx, test_idx) in enumerate(skf.split(data_indices, labels)):
-        print(f"Fold {j+1}")
+    for fold, (train_idx, test_idx) in enumerate(skf.split(data_indices, labels)):
+        print(f"Fold {fold+1}")
         train_dataset = Subset(full_dataset, train_idx)
         test_dataset = Subset(full_dataset, test_idx)
         train_val_ds = train_val_dataset(train_dataset, val_split=0.15)
@@ -54,7 +57,7 @@ def main():
             shuffle=True,
             num_workers=4,
             pin_memory=True,
-            prefetch_factor=1,
+            prefetch_factor=3,
         )
         val_data_loader = DataLoader(
             train_val_ds["val"],
@@ -79,22 +82,18 @@ def main():
 
         # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)
         max_f1 = 0.0
-        neg_count, pos_count = torch.unique(
-            train_val_ds["train"].all_labels, return_counts=True
-        )[1]
-        print(torch.unique(train_val_ds["train"].all_labels, return_counts=True))
-        pos_weight = 4.8
+
         pos_weight_tensor = torch.full([1], pos_weight)
         loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor).to(device)
         accuracy_metric = Accuracy("binary").to(device)
         f1_metric = F1Score("binary").to(device)
         auroc_metric = AUROC("binary").to(device)
-        epochs = 10
-        # wandb.init(
-        #     project="pedestrian_surrogate",
-        #     entity="mazurek",
-        #     name="rgb_weather_resnet_default_good_res_seed_0",
-        # )
+        epochs = 12
+        wandb.init(
+            project="pedestrian_surrogate",
+            entity="mazurek",
+            name=f"rgb_weather_resnet_default_kfold_{fold+1}",
+        )
 
         for epoch in range(0, epochs):
             net.train()
@@ -126,7 +125,7 @@ def main():
             )
 
             net.eval()
-            test_loss = 0
+            val_loss = 0
             label_list = torch.Tensor().to(device)
             pred_list = torch.Tensor().to(device)
             with torch.no_grad():
@@ -138,15 +137,24 @@ def main():
                     pred_list = torch.cat((pred_list, out_fr.detach()), dim=0)
                     label_list = torch.cat((label_list, label), dim=0)
                     loss = loss_fn(out_fr, label.float())
-                    test_loss += loss.detach().item()
-            test_acc = accuracy_metric(pred_list, label_list)
-            test_f1 = f1_metric(pred_list, label_list)
-            test_auroc = auroc_metric(pred_list, label_list)
-            print(f"Val loss {test_loss/(n+1)}")
-            print(
-                f"Val epoch {epoch}, acc {test_acc}, f1 {test_f1}, auroc {test_auroc}"
+                    val_loss += loss.detach().item()
+            val_acc = accuracy_metric(pred_list, label_list)
+            val_f1 = f1_metric(pred_list, label_list)
+            val_auroc = auroc_metric(pred_list, label_list)
+            print(f"Val loss {val_loss/(n+1)}")
+            print(f"Val epoch {epoch}, acc {val_acc}, f1 {val_f1}, auroc {val_auroc}")
+            wandb.log(
+                {
+                    "train_acc": train_acc,
+                    "train_loss": train_loss / (n + i),
+                    "train_f1": train_f1,
+                    "train_auroc": train_auroc,
+                    "val_acc": val_acc,
+                    "val_loss": val_loss / (n + 1),
+                    "val_f1": val_f1,
+                    "val_auroc": val_auroc,
+                }
             )
-
         net.eval()
         test_loss = 0
         label_list = torch.Tensor().to(device)
@@ -166,20 +174,18 @@ def main():
         test_auroc = auroc_metric(pred_list, label_list)
         print(f"Test loss {test_loss/(n+1)}")
         print(f"Test epoch {epoch}, acc {test_acc}, f1 {test_f1}, auroc {test_auroc}")
-        # wandb.log(
-        #     {
-        #         "train_acc": train_acc,
-        #         "train_loss": train_loss,
-        #         "train_f1": train_f1,
-        #         "test_acc": test_acc,
-        #         "test_loss": test_loss,
-        #         "test_f1": test_f1,
-        #     }
-        # )
+        wandb.log(
+            {
+                "test_acc": test_acc,
+                "test_loss": test_loss / (n + 1),
+                "test_f1": test_f1,
+                "test_auroc": test_auroc,
+            }
+        )
         # if float(max_f1) < float(test_f1):
         #     max_f1 = test_f1
         #     save_model(net, checkpoint_folder_path, checkpoint_file_save)
-        # wandb.finish()
+        wandb.finish()
 
 
 if __name__ == "__main__":
