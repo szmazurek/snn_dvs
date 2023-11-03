@@ -81,9 +81,6 @@ class DVSDatasetAsRGB(Dataset):
                 transforms.RandomHorizontalFlip(),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
-                # transforms.Normalize(
-                #     mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                # ),
             ]
         )
 
@@ -102,7 +99,12 @@ class DVSDatasetAsRGB(Dataset):
         return image, label
 
 
-class DVSDatasetCorrected(Dataset):
+class DVSDatasetRepeated(Dataset):
+    """Abstraction representing a DVS based dataset, where eery sample
+    is artificially transformed into timeseries via repeating one
+    frame time_dim times.
+    """
+
     def __init__(self, target_dir: str, time_dim: int = 32) -> None:
         self.all_folders = [
             os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
@@ -127,9 +129,6 @@ class DVSDatasetCorrected(Dataset):
                 transforms.RandomHorizontalFlip(),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
-                # transforms.Normalize(
-                #     mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                # ),
             ]
         )
 
@@ -143,8 +142,55 @@ class DVSDatasetCorrected(Dataset):
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
         file_path = self.all_files[index]
         image = self.load_image(file_path).repeat(self.time_dim, 1, 1, 1)
-        label = torch.tensor(self.all_labels[index])  # .repeat(self.time_dim, 1)
-        # label = int(os.path.splitext(os.path.basename(file_path))[0].split("-")[1])
+        label = torch.tensor(self.all_labels[index])
+
+        return image, label
+
+
+class DVSDatasetProper(Dataset):
+    """Abstraction representing the dataset for DVS data, where every
+    sample consists of n_frames from a given video. Length and overlap
+    of a sample can be manipulated.
+    """
+
+    def __init__(self, target_dir: str, sample_len: int = 4, overlap : int =0) -> None:
+        self.all_folders = [
+            os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
+        ]
+        all_files_png = [
+            glob.glob(os.path.join(folders, "*.png")) for folders in self.all_folders
+        ]
+        all_files_jpg = [
+            glob.glob(os.path.join(folders, "*.jpg")) for folders in self.all_folders
+        ]
+        self.all_files = all_files_png + all_files_jpg
+        self.all_files = [e for sub in self.all_files for e in sub]
+
+        self.all_labels = [
+            int(os.path.splitext(os.path.basename(file_path))[0].split("-")[1])
+            for file_path in self.all_files
+        ]
+        self.time_dim = overlap
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize((150, 400), interpolation=Image.NEAREST),
+                transforms.RandomHorizontalFlip(),
+                transforms.PILToTensor(),
+                transforms.ConvertImageDtype(torch.float),
+            ]
+        )
+
+    def load_image(self, image) -> torch.Tensor:
+        img = Image.open(image)
+        return self.transform(img)
+
+    def __len__(self) -> int:
+        return len(self.all_files)
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
+        file_path = self.all_files[index]
+        image = self.load_image(file_path).repeat(self.time_dim, 1, 1, 1)
+        label = torch.tensor(self.all_labels[index])
 
         return image, label
 
