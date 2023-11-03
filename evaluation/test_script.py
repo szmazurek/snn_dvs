@@ -6,7 +6,7 @@ from torchvision.models import resnet18, ResNet18_Weights
 from data_loaders import DVSDatasetProper
 
 
-dataset = DVSDatasetProper("dataset_weather_dvs")
+dataset = DVSDatasetProper("datasets/dataset_weather_dvs")
 
 print(dataset[0][0].shape)
 # def Resnet18_DVS():

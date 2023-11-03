@@ -156,7 +156,13 @@ class DVSDatasetProper(Dataset):
     of a sample can be manipulated.
     """
 
-    def __init__(self, target_dir: str, sample_len: int = 4, overlap: int = 0) -> None:
+    def __init__(
+        self,
+        target_dir: str,
+        sample_len: int = 4,
+        overlap: int = 0,
+        per_frame_labels: bool = False,
+    ) -> None:
         self.all_folders = [
             os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
         ]
@@ -170,9 +176,11 @@ class DVSDatasetProper(Dataset):
         all_files = [e for sub in all_files for e in sub]
 
         all_files_sorted = self.sort_frames(all_files)
-        self.all_labels = [
-            int(os.path.splitext(os.path.basename(file_path))[0].split("-")[1])
-            for file_path in all_files_sorted
+        widnowed_samples = self.create_windowed_samples(
+            all_files_sorted, sample_len, overlap
+        )
+        per_frame_labels = [
+            self.create_window_labels(sample) for sample in widnowed_samples
         ]
 
         self.time_dim = sample_len
@@ -185,6 +193,34 @@ class DVSDatasetProper(Dataset):
                 transforms.ConvertImageDtype(torch.float),
             ]
         )
+
+    @staticmethod
+    def create_window_labels(window: List[str]) -> List[int]:
+        """Creates a list of labels for a given windowed sample."""
+        labels_per_frame = [
+            int(os.path.splitext(os.path.basename(file_path))[0].split("-")[-1])
+            for file_path in window
+        ]
+        return labels_per_frame
+
+    @staticmethod
+    def create_windowed_samples(
+        filenames: List[str], sample_len: int, overlap: int
+    ) -> List[List[str]]:
+        """Creates a list of lists, where each sublist contains
+        filenames of frames that belong to a single sample.
+        """
+        windowed_samples = []
+
+        for i in range(0, len(filenames) - sample_len + 1, sample_len - overlap):
+            candidate_window = filenames[i : i + sample_len]
+            videos_in_window = set(
+                [os.path.dirname(filename) for filename in candidate_window]
+            )
+            if len(videos_in_window) == 1:
+                windowed_samples.append(candidate_window)
+
+        return windowed_samples
 
     @staticmethod
     def sort_frames(filenames: List[str]) -> List[str]:
