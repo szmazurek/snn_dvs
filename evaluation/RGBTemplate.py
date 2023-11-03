@@ -13,6 +13,7 @@ from models import Resnet18
 from data_loaders import RGBDataset
 from torchmetrics import Accuracy, F1Score, AUROC
 from torch.utils.data import Subset
+from spikingjelly.activation_based import functional
 
 api_key_file = open("./wandb_api_key.txt", "r")
 API_KEY = api_key_file.read()
@@ -111,6 +112,7 @@ def main_kfold(args):
             for i, (img, label) in enumerate(train_data_loader):
                 optimizer.zero_grad()
                 label = label.to(device)
+
                 img = img.to(device).float()
 
                 out_fr = net(img).squeeze()
@@ -203,7 +205,7 @@ def normal_training(args):
 
     full_dataset = RGBDataset(args.dataset_path)
     labs = torch.tensor(full_dataset.all_labels)
-    print(labs)
+
     neg_count, pos_count = torch.unique(labs, return_counts=True)[1]
     pos_weight = neg_count / pos_count
     labels = full_dataset.all_labels
@@ -248,8 +250,6 @@ def normal_training(args):
     optimizer = torch.optim.AdamW(
         net.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
-
-    # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)
     max_f1 = 0.0
 
     pos_weight_tensor = torch.full([1], pos_weight)
@@ -265,28 +265,29 @@ def normal_training(args):
             group=args.wandb_group,
             name=f"{args.wandb_exp_name}",
         )
+
     for epoch in range(0, epochs):
         net.train()
         train_loss = 0
-        label_list = torch.Tensor().to(device)
-        pred_list = torch.Tensor().to(device)
-        for i, (img, label) in enumerate(train_data_loader):
+        label_list_train = torch.Tensor().to(device)
+        pred_list_train = torch.Tensor().to(device)
+        for i, (img_train, label_train) in enumerate(train_data_loader):
             optimizer.zero_grad()
-            label = label.to(device)
-            img = img.to(device).float()
+            label_train = label_train.to(device)
+            img_train = img_train.to(device).float()
+            out_fr_train = net(img_train).squeeze()
+            pred_list_train = torch.cat((pred_list_train, out_fr_train.detach()), dim=0)
+            label_list_train = torch.cat((label_list_train, label_train), dim=0)
 
-            out_fr = net(img).squeeze()
-            pred_list = torch.cat((pred_list, out_fr.detach()), dim=0)
-            label_list = torch.cat((label_list, label), dim=0)
-
-            loss = loss_fn(out_fr, label.float())
-            train_loss += loss.detach().item()
-            loss.backward()
+            loss_train = loss_fn(out_fr_train, label_train.float())
+            train_loss += loss_train.detach().item()
+            loss_train.backward()
             optimizer.step()
-        train_acc = accuracy_metric(pred_list, label_list)
-        train_f1 = f1_metric(pred_list, label_list)
-        train_auroc = auroc_metric(pred_list, label_list)
-
+        train_acc = accuracy_metric(pred_list_train, label_list_train)
+        train_f1 = f1_metric(pred_list_train, label_list_train)
+        train_auroc = auroc_metric(pred_list_train, label_list_train)
+        label_list_train = torch.Tensor().to(device)
+        pred_list_train = torch.Tensor().to(device)
         print(f"Train loss {train_loss/(i+1)}")
         print(
             f"Train epoch {epoch}, acc {train_acc}, f1 {train_f1}, auroc {train_auroc}"
@@ -294,20 +295,23 @@ def normal_training(args):
 
         net.eval()
         val_loss = 0
-        label_list = torch.Tensor().to(device)
-        pred_list = torch.Tensor().to(device)
+        label_list_val = torch.Tensor().to(device)
+        pred_list_val = torch.Tensor().to(device)
         with torch.no_grad():
-            for n, (img, label) in enumerate(val_data_loader):
-                label = label.to(device)
-                img = img.to(device).float()
-                out_fr = net(img).squeeze()
-                pred_list = torch.cat((pred_list, out_fr.detach()), dim=0)
-                label_list = torch.cat((label_list, label), dim=0)
-                loss = loss_fn(out_fr, label.float())
-                val_loss += loss.detach().item()
-        val_acc = accuracy_metric(pred_list, label_list)
-        val_f1 = f1_metric(pred_list, label_list)
-        val_auroc = auroc_metric(pred_list, label_list)
+            for n, (img_val, label_val) in enumerate(val_data_loader):
+                label_val = label_val.to(device)
+                img_val = img_val.to(device).float()
+                out_fr_val = net(img_val).squeeze()
+                pred_list_val = torch.cat((pred_list_val, out_fr_val.detach()), dim=0)
+                label_list_val = torch.cat((label_list_val, label_val), dim=0)
+                loss_val = loss_fn(out_fr_val, label_val.float())
+                val_loss += loss_val.detach().item()
+
+        val_acc = accuracy_metric(pred_list_val, label_list_val)
+        val_f1 = f1_metric(pred_list_val, label_list_val)
+        val_auroc = auroc_metric(pred_list_val, label_list_val)
+        label_list_val = torch.Tensor().to(device)
+        pred_list_val = torch.Tensor().to(device)
         print(f"Val loss {val_loss/(n+1)}")
         print(f"Val epoch {epoch}, acc {val_acc}, f1 {val_f1}, auroc {val_auroc}")
         if args.wandb:
@@ -325,21 +329,21 @@ def normal_training(args):
             )
     net.eval()
     test_loss = 0
-    label_list = torch.Tensor().to(device)
-    pred_list = torch.Tensor().to(device)
+    label_list_test = torch.Tensor().to(device)
+    pred_list_test = torch.Tensor().to(device)
     with torch.no_grad():
-        for n, (img, label) in enumerate(test_data_loader):
-            label = label.to(device)
-            img = img.to(device).float()
+        for n, (img_test, label_test) in enumerate(test_data_loader):
+            label_test = label_test.to(device)
+            img_test = img_test.to(device).float()
+            out_fr_test = net(img_test).squeeze()
+            pred_list_test = torch.cat((pred_list_test, out_fr_test.detach()), dim=0)
+            label_list_test = torch.cat((label_list_test, label_test), dim=0)
+            loss_test = loss_fn(out_fr_test, label_test.float())
+            test_loss += loss_test.detach().item()
 
-            out_fr = net(img).squeeze()
-            pred_list = torch.cat((pred_list, out_fr.detach()), dim=0)
-            label_list = torch.cat((label_list, label), dim=0)
-            loss = loss_fn(out_fr, label.float())
-            test_loss += loss.detach().item()
-    test_acc = accuracy_metric(pred_list, label_list)
-    test_f1 = f1_metric(pred_list, label_list)
-    test_auroc = auroc_metric(pred_list, label_list)
+    test_acc = accuracy_metric(pred_list_test, label_list_test)
+    test_f1 = f1_metric(pred_list_test, label_list_test)
+    test_auroc = auroc_metric(pred_list_test, label_list_test)
     print(f"Test loss {test_loss/(n+1)}")
     print(f"Test epoch {epoch}, acc {test_acc}, f1 {test_f1}, auroc {test_auroc}")
     if args.wandb:
