@@ -5,7 +5,10 @@ import torch
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 from PIL import Image
-from typing import Tuple
+from typing import Tuple, List
+import re
+from operator import itemgetter
+from itertools import groupby
 
 
 class RGBDataset(Dataset):
@@ -153,7 +156,7 @@ class DVSDatasetProper(Dataset):
     of a sample can be manipulated.
     """
 
-    def __init__(self, target_dir: str, sample_len: int = 4, overlap : int =0) -> None:
+    def __init__(self, target_dir: str, sample_len: int = 4, overlap: int = 0) -> None:
         self.all_folders = [
             os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
         ]
@@ -163,14 +166,17 @@ class DVSDatasetProper(Dataset):
         all_files_jpg = [
             glob.glob(os.path.join(folders, "*.jpg")) for folders in self.all_folders
         ]
-        self.all_files = all_files_png + all_files_jpg
-        self.all_files = [e for sub in self.all_files for e in sub]
+        all_files = all_files_png + all_files_jpg
+        all_files = [e for sub in all_files for e in sub]
 
+        all_files_sorted = self.sort_frames(all_files)
         self.all_labels = [
             int(os.path.splitext(os.path.basename(file_path))[0].split("-")[1])
-            for file_path in self.all_files
+            for file_path in all_files_sorted
         ]
-        self.time_dim = overlap
+
+        self.time_dim = sample_len
+        self.overlap = overlap
         self.transform = transforms.Compose(
             [
                 transforms.Resize((150, 400), interpolation=Image.NEAREST),
@@ -180,6 +186,30 @@ class DVSDatasetProper(Dataset):
             ]
         )
 
+    @staticmethod
+    def sort_frames(filenames: List[str]) -> List[str]:
+        parsed_filenames = []
+        for filename in filenames:
+            video_id = os.path.dirname(filename)
+            frame_number = int(
+                re.search(r"(\d+)-", os.path.basename(filename)).group(1)
+            )
+            parsed_filenames.append((video_id, frame_number, filename))
+
+        # Sort by video ID and frame number
+        parsed_filenames.sort(key=itemgetter(0, 1))
+
+        # Group by video ID
+        grouped_filenames = []
+        for video_id, group in groupby(parsed_filenames, key=itemgetter(0)):
+            grouped_filenames.extend(list(group))
+
+        # Flatten the list and extract filenames
+        sorted_filenames = [filename for _, _, filename in grouped_filenames]
+
+        return sorted_filenames
+
+    # Now grouped_filenames is a list of lists, where each sublist contains
     def load_image(self, image) -> torch.Tensor:
         img = Image.open(image)
         return self.transform(img)
