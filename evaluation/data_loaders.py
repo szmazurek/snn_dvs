@@ -14,13 +14,16 @@ from itertools import groupby
 class RGBDataset(Dataset):
     def __init__(self, target_dir: str) -> None:
         self.all_folders = [
-            os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
+            os.path.join(target_dir, directory)
+            for directory in os.listdir(target_dir)
         ]
         all_files_png = [
-            glob.glob(os.path.join(folders, "*.png")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.png"))
+            for folders in self.all_folders
         ]
         all_files_jpg = [
-            glob.glob(os.path.join(folders, "*.jpg")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.jpg"))
+            for folders in self.all_folders
         ]
         self.all_files = all_files_png + all_files_jpg
         self.all_files = [e for sub in self.all_files for e in sub]
@@ -63,13 +66,16 @@ class DVSDatasetAsRGB(Dataset):
 
     def __init__(self, target_dir: str) -> None:
         self.all_folders = [
-            os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
+            os.path.join(target_dir, directory)
+            for directory in os.listdir(target_dir)
         ]
         all_files_png = [
-            glob.glob(os.path.join(folders, "*.png")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.png"))
+            for folders in self.all_folders
         ]
         all_files_jpg = [
-            glob.glob(os.path.join(folders, "*.jpg")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.jpg"))
+            for folders in self.all_folders
         ]
         self.all_files = all_files_png + all_files_jpg
         self.all_files = [e for sub in self.all_files for e in sub]
@@ -110,13 +116,16 @@ class DVSDatasetRepeated(Dataset):
 
     def __init__(self, target_dir: str, time_dim: int = 32) -> None:
         self.all_folders = [
-            os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
+            os.path.join(target_dir, directory)
+            for directory in os.listdir(target_dir)
         ]
         all_files_png = [
-            glob.glob(os.path.join(folders, "*.png")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.png"))
+            for folders in self.all_folders
         ]
         all_files_jpg = [
-            glob.glob(os.path.join(folders, "*.jpg")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.jpg"))
+            for folders in self.all_folders
         ]
         self.all_files = all_files_png + all_files_jpg
         self.all_files = [e for sub in self.all_files for e in sub]
@@ -171,13 +180,16 @@ class DVSDatasetProper(Dataset):
         per_frame_label_mode: bool = False,
     ) -> None:
         self.all_folders = [
-            os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
+            os.path.join(target_dir, directory)
+            for directory in os.listdir(target_dir)
         ]
         all_files_png = [
-            glob.glob(os.path.join(folders, "*.png")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.png"))
+            for folders in self.all_folders
         ]
         all_files_jpg = [
-            glob.glob(os.path.join(folders, "*.jpg")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.jpg"))
+            for folders in self.all_folders
         ]
         all_files = all_files_png + all_files_jpg
         all_files = [e for sub in all_files for e in sub]
@@ -202,7 +214,11 @@ class DVSDatasetProper(Dataset):
         else:
             self.all_labels = per_frame_labels
             self.labels_count = [
-                int(os.path.splitext(os.path.basename(file_path))[0].split("-")[-1])
+                int(
+                    os.path.splitext(os.path.basename(file_path))[0].split(
+                        "-"
+                    )[-1]
+                )
                 for file_path in all_files_sorted
             ]
         self.time_dim = sample_len
@@ -220,7 +236,9 @@ class DVSDatasetProper(Dataset):
     def create_window_labels(window: List[str]) -> List[int]:
         """Creates a list of labels for a given windowed sample."""
         labels_per_frame = [
-            int(os.path.splitext(os.path.basename(file_path))[0].split("-")[-1])
+            int(
+                os.path.splitext(os.path.basename(file_path))[0].split("-")[-1]
+            )
             for file_path in window
         ]
         return labels_per_frame
@@ -234,7 +252,9 @@ class DVSDatasetProper(Dataset):
         """
         windowed_samples = []
 
-        for i in range(0, len(filenames) - sample_len + 1, sample_len - overlap):
+        for i in range(
+            0, len(filenames) - sample_len + 1, sample_len - overlap
+        ):
             candidate_window = filenames[i : i + sample_len]
             videos_in_window = set(
                 [os.path.dirname(filename) for filename in candidate_window]
@@ -277,7 +297,41 @@ class DVSDatasetProper(Dataset):
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
         file_path = self.all_samples[index]
-        window = torch.cat([self.load_image(image) for image in file_path]).unsqueeze(1)
+        window = torch.cat(
+            [self.load_image(image) for image in file_path]
+        ).unsqueeze(1)
+        label = torch.tensor(self.all_labels[index])
+        return window, label
+
+
+class RGBDatasetTemporal(DVSDatasetProper):
+    """A class that loads RGB frames as a temporal sequence of images.
+    Only transforms are overriden (changed interpolation and normalization).
+    """
+
+    def __init__(
+        self,
+        target_dir: str,
+        sample_len: int = 4,
+        overlap: int = 0,
+        per_frame_label_mode: bool = False,
+    ) -> None:
+        super().__init__(target_dir, sample_len, overlap, per_frame_label_mode)
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize((150, 400)),
+                transforms.RandomHorizontalFlip(),
+                transforms.PILToTensor(),
+                transforms.ConvertImageDtype(torch.float),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
+        file_path = self.all_samples[index]
+        window = torch.stack([self.load_image(image) for image in file_path])
         label = torch.tensor(self.all_labels[index])
         return window, label
 

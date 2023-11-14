@@ -13,7 +13,7 @@ from models import Resnet18
 from data_loaders import RGBDataset
 from torchmetrics import Accuracy, F1Score, AUROC
 from torch.utils.data import Subset
-from spikingjelly.activation_based import functional
+
 
 api_key_file = open("./wandb_api_key.txt", "r")
 API_KEY = api_key_file.read()
@@ -45,8 +45,12 @@ def main_kfold(args):
     pos_weight = neg_count / pos_count
     labels = full_dataset.all_labels
     data_indices = np.arange(len(labels))
-    skf = StratifiedKFold(n_splits=args.n_folds, shuffle=False, random_state=args.seed)
-    for fold, (train_idx, test_idx) in enumerate(skf.split(data_indices, labels)):
+    skf = StratifiedKFold(
+        n_splits=args.n_folds, shuffle=False, random_state=args.seed
+    )
+    for fold, (train_idx, test_idx) in enumerate(
+        skf.split(data_indices, labels)
+    ):
         print(f"Fold {fold+1}")
         train_dataset = Subset(full_dataset, train_idx)
         test_dataset = Subset(full_dataset, test_idx)
@@ -149,7 +153,9 @@ def main_kfold(args):
             val_f1 = f1_metric(pred_list, label_list)
             val_auroc = auroc_metric(pred_list, label_list)
             print(f"Val loss {val_loss/(n+1)}")
-            print(f"Val epoch {epoch}, acc {val_acc}, f1 {val_f1}, auroc {val_auroc}")
+            print(
+                f"Val epoch {epoch}, acc {val_acc}, f1 {val_f1}, auroc {val_auroc}"
+            )
             if args.wandb:
                 wandb.log(
                     {
@@ -181,7 +187,9 @@ def main_kfold(args):
         test_f1 = f1_metric(pred_list, label_list)
         test_auroc = auroc_metric(pred_list, label_list)
         print(f"Test loss {test_loss/(n+1)}")
-        print(f"Test epoch {epoch}, acc {test_acc}, f1 {test_f1}, auroc {test_auroc}")
+        print(
+            f"Test epoch {epoch}, acc {test_acc}, f1 {test_f1}, auroc {test_auroc}"
+        )
         if args.wandb:
             wandb.log(
                 {
@@ -211,7 +219,10 @@ def normal_training(args):
     labels = full_dataset.all_labels
     data_indices = np.arange(len(labels))
     train_idx, test_idx = train_test_split(
-        data_indices, test_size=args.test_size, stratify=labels, random_state=args.seed
+        data_indices,
+        test_size=args.test_size,
+        stratify=labels,
+        random_state=args.seed,
     )
     train_dataset = Subset(full_dataset, train_idx)
     test_dataset = Subset(full_dataset, test_idx)
@@ -276,8 +287,12 @@ def normal_training(args):
             label_train = label_train.to(device)
             img_train = img_train.to(device).float()
             out_fr_train = net(img_train).squeeze()
-            pred_list_train = torch.cat((pred_list_train, out_fr_train.detach()), dim=0)
-            label_list_train = torch.cat((label_list_train, label_train), dim=0)
+            pred_list_train = torch.cat(
+                (pred_list_train, out_fr_train.detach()), dim=0
+            )
+            label_list_train = torch.cat(
+                (label_list_train, label_train), dim=0
+            )
 
             loss_train = loss_fn(out_fr_train, label_train.float())
             train_loss += loss_train.detach().item()
@@ -302,7 +317,9 @@ def normal_training(args):
                 label_val = label_val.to(device)
                 img_val = img_val.to(device).float()
                 out_fr_val = net(img_val).squeeze()
-                pred_list_val = torch.cat((pred_list_val, out_fr_val.detach()), dim=0)
+                pred_list_val = torch.cat(
+                    (pred_list_val, out_fr_val.detach()), dim=0
+                )
                 label_list_val = torch.cat((label_list_val, label_val), dim=0)
                 loss_val = loss_fn(out_fr_val, label_val.float())
                 val_loss += loss_val.detach().item()
@@ -313,7 +330,9 @@ def normal_training(args):
         label_list_val = torch.Tensor().to(device)
         pred_list_val = torch.Tensor().to(device)
         print(f"Val loss {val_loss/(n+1)}")
-        print(f"Val epoch {epoch}, acc {val_acc}, f1 {val_f1}, auroc {val_auroc}")
+        print(
+            f"Val epoch {epoch}, acc {val_acc}, f1 {val_f1}, auroc {val_auroc}"
+        )
         if args.wandb:
             wandb.log(
                 {
@@ -336,7 +355,9 @@ def normal_training(args):
             label_test = label_test.to(device)
             img_test = img_test.to(device).float()
             out_fr_test = net(img_test).squeeze()
-            pred_list_test = torch.cat((pred_list_test, out_fr_test.detach()), dim=0)
+            pred_list_test = torch.cat(
+                (pred_list_test, out_fr_test.detach()), dim=0
+            )
             label_list_test = torch.cat((label_list_test, label_test), dim=0)
             loss_test = loss_fn(out_fr_test, label_test.float())
             test_loss += loss_test.detach().item()
@@ -345,7 +366,9 @@ def normal_training(args):
     test_f1 = f1_metric(pred_list_test, label_list_test)
     test_auroc = auroc_metric(pred_list_test, label_list_test)
     print(f"Test loss {test_loss/(n+1)}")
-    print(f"Test epoch {epoch}, acc {test_acc}, f1 {test_f1}, auroc {test_auroc}")
+    print(
+        f"Test epoch {epoch}, acc {test_acc}, f1 {test_f1}, auroc {test_auroc}"
+    )
     if args.wandb:
         wandb.log(
             {
@@ -371,8 +394,12 @@ if __name__ == "__main__":
     parser.add_argument("--val_size", type=float, default=0.15)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--dvs_mode", action="store_true", default=False)
-    parser.add_argument("--checkpoint_folder_path", type=str, default="checkpoint_path")
-    parser.add_argument("--checkpoint_file_save", type=str, default="checkpoint.pth")
+    parser.add_argument(
+        "--checkpoint_folder_path", type=str, default="checkpoint_path"
+    )
+    parser.add_argument(
+        "--checkpoint_file_save", type=str, default="checkpoint.pth"
+    )
     parser.add_argument("--wandb", action="store_true", default=False)
     parser.add_argument("--wandb_project", type=str, default="project_name")
     parser.add_argument("--wandb_group", type=str, default="group_name")
