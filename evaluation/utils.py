@@ -87,5 +87,4 @@ def perform_forward_pass_on_full_batch(
             for i in range(sample.shape[0])
         ]
     )
-
     return result_tensor

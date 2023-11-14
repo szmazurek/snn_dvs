@@ -21,7 +21,6 @@ api_key_file.close()
 os.environ["WANDB_API_KEY"] = API_KEY
 
 
-
 def set_random_seeds(seed: int = 0) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -226,6 +225,16 @@ def normal_training(args):
             }
         )
         wandb.finish()
+    if args.save_final_model:
+        # save both the eval subset of the dataset and the trained model
+        torch.save(
+            test_dataset,
+            f"saved_datasets/timestep_{args.sample_timestep}_overlap_{args.sample_overlap}_batch_{args.batch_size}.pt",
+        )
+        torch.save(
+            net.state_dict(),
+            f"saved_models/timestep_{args.sample_timestep}_overlap_{args.sample_overlap}_batch_{args.batch_size}.pt",
+        )
 
 
 if __name__ == "__main__":
@@ -253,6 +262,9 @@ if __name__ == "__main__":
     parser.add_argument("--wandb_project", type=str, default="project_name")
     parser.add_argument("--wandb_group", type=str, default="group_name")
     parser.add_argument("--wandb_exp_name", type=str, default="exp_name")
+    parser.add_argument(
+        "--save_final_model", action="store_true", default=False
+    )
     args = parser.parse_args()
     set_random_seeds(args.seed)
     normal_training(args)

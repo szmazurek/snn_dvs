@@ -36,7 +36,11 @@ def temporal_rgb_training(args):
     checkpoint_folder_path = args.checkpoint_folder_path
     checkpoint_file_save = args.checkpoint_file_save
 
-    full_dataset = RGBDatasetTemporal(args.dataset_path)
+    full_dataset = RGBDatasetTemporal(
+        target_dir=args.dataset_path,
+        sample_len=args.sample_timestep,
+        overlap=args.sample_overlap,
+    )
     labs = torch.tensor(full_dataset.all_labels)
 
     neg_count, pos_count = torch.unique(labs, return_counts=True)[1]
@@ -109,9 +113,12 @@ def temporal_rgb_training(args):
             optimizer.zero_grad()
             label_train = label_train.to(device)
             img_train = img_train.to(device).float()
-            out_fr_train = perform_forward_pass_on_full_batch(
-                net, img_train
-            ).mean(0)
+            out_fr_train = (
+                (perform_forward_pass_on_full_batch(net, img_train))
+                .squeeze(2)
+                .mean(1)
+            )
+
             out_fr_train = unsqueeze_dim_if_missing(out_fr_train)
             pred_list_train = torch.cat(
                 (pred_list_train, out_fr_train.detach()), dim=0
@@ -142,9 +149,11 @@ def temporal_rgb_training(args):
             for n, (img_val, label_val) in enumerate(val_data_loader):
                 label_val = label_val.to(device)
                 img_val = img_val.to(device).float()
-                out_fr_val = perform_forward_pass_on_full_batch(
-                    net, img_val
-                ).mean(0)
+                out_fr_val = (
+                    perform_forward_pass_on_full_batch(net, img_val)
+                    .squeeze(2)
+                    .mean(1)
+                )
                 out_fr_val = unsqueeze_dim_if_missing(out_fr_val)
                 pred_list_val = torch.cat(
                     (pred_list_val, out_fr_val.detach()), dim=0
@@ -183,8 +192,10 @@ def temporal_rgb_training(args):
         for n, (img_test, label_test) in enumerate(test_data_loader):
             label_test = label_test.to(device)
             img_test = img_test.to(device).float()
-            out_fr_test = perform_forward_pass_on_full_batch(net, img_test).mean(
-                0
+            out_fr_test = (
+                perform_forward_pass_on_full_batch(net, img_test)
+                .squeeze(2)
+                .mean(1)
             )
             out_fr_test = unsqueeze_dim_if_missing(out_fr_test)
             pred_list_test = torch.cat(
@@ -201,6 +212,7 @@ def temporal_rgb_training(args):
     print(
         f"Test epoch {epoch}, acc {test_acc}, f1 {test_f1}, auroc {test_auroc}"
     )
+
     if args.wandb:
         wandb.log(
             {
@@ -224,6 +236,8 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=0.1)
     parser.add_argument("--test_size", type=float, default=0.15)
     parser.add_argument("--val_size", type=float, default=0.15)
+    parser.add_argument("--sample_timestep", type=int, default=4)
+    parser.add_argument("--sample_overlap", type=int, default=0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--dvs_mode", action="store_true", default=False)
     parser.add_argument(
