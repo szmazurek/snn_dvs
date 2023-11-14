@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from utils import train_val_dataset
 from sklearn.model_selection import train_test_split
 from models import Resnet18_DVS
-from data_loaders import DVSDatasetCorrected
+from data_loaders import DVSDatasetRepeated, DVSDatasetProper
 from torchmetrics import Accuracy, F1Score, AUROC
 from torch.utils.data import Subset
 from spikingjelly.activation_based import functional
@@ -19,6 +19,12 @@ api_key_file = open("./wandb_api_key.txt", "r")
 API_KEY = api_key_file.read()
 api_key_file.close()
 os.environ["WANDB_API_KEY"] = API_KEY
+
+
+def unsqueeze_dim_if_missing(input_tensor: torch.Tensor) -> torch.Tensor:
+    if input_tensor.dim() == 0:
+        return input_tensor.unsqueeze(0)
+    return input_tensor
 
 
 def set_random_seeds(seed: int = 0) -> None:
@@ -35,7 +41,13 @@ def normal_training(args):
     checkpoint_file_save = args.checkpoint_file_save
 
     # full_dataset = RGBDataset(args.dataset_path)
-    full_dataset = DVSDatasetCorrected(args.dataset_path, time_dim=args.sample_timesetp)
+    # full_dataset = DVSDatasetCorrected(args.dataset_path, time_dim=args.sample_timesetp)
+    full_dataset = DVSDatasetProper(
+        args.dataset_path,
+        sample_len=args.sample_timestep,
+        overlap=args.sample_overlap,
+        per_frame_label_mode=args.per_sample_label_model,
+    )
 
     labs = torch.tensor(full_dataset.all_labels)
 
@@ -109,9 +121,10 @@ def normal_training(args):
             optimizer.zero_grad()
             # label_val = label_val.permute(1, 0, 2).squeeze(2)
             label_train = label_train.to(device)
-            img_train = img_train.permute(1, 0, 2, 3, 4).squeeze(1)
+            img_train = img_train.permute(1, 0, 2, 3, 4)
             img_train = img_train.to(device).float()
             out_fr_train = net(img_train).squeeze().mean(0)
+            out_fr_train = unsqueeze_dim_if_missing(out_fr_train)
             pred_list_train = torch.cat((pred_list_train, out_fr_train.detach()), dim=0)
             label_list_train = torch.cat((label_list_train, label_train), dim=0)
 
@@ -139,9 +152,11 @@ def normal_training(args):
             for n, (img_val, label_val) in enumerate(val_data_loader):
                 # label_val = label_val.permute(1, 0, 2).squeeze(2)
                 label_val = label_val.to(device)
-                img_val = img_val.permute(1, 0, 2, 3, 4).squeeze(1)
+                img_val = img_val.permute(1, 0, 2, 3, 4)
                 img_val = img_val.to(device).float()
                 out_fr_val = net(img_val).squeeze().mean(0)
+                out_fr_val = unsqueeze_dim_if_missing(out_fr_val)
+
                 pred_list_val = torch.cat((pred_list_val, out_fr_val.detach()), dim=0)
                 label_list_val = torch.cat((label_list_val, label_val), dim=0)
                 loss_val = loss_fn(out_fr_val, label_val.float())
@@ -176,9 +191,10 @@ def normal_training(args):
         for n, (img_test, label_test) in enumerate(test_data_loader):
             # label_test = label_test.permute(1, 0, 2).squeeze(2)
             label_test = label_test.to(device)
-            img_test = img_test.permute(1, 0, 2, 3, 4).squeeze(1)
+            img_test = img_test.permute(1, 0, 2, 3, 4)
             img_test = img_test.to(device).float()
             out_fr_test = net(img_test).squeeze().mean(0)
+            out_fr_test = unsqueeze_dim_if_missing(out_fr_test)
             pred_list_test = torch.cat((pred_list_test, out_fr_test.detach()), dim=0)
             label_list_test = torch.cat((label_list_test, label_test), dim=0)
             loss_test = loss_fn(out_fr_test, label_test.float())
@@ -211,7 +227,9 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=0.1)
     parser.add_argument("--test_size", type=float, default=0.15)
     parser.add_argument("--val_size", type=float, default=0.15)
-    parser.add_argument("--sample_timesetp", type=int, default=4)
+    parser.add_argument("--sample_timestep", type=int, default=4)
+    parser.add_argument("--sample_overlap", type=int, default=0)
+    parser.add_argument("--per_sample_label_model", action="store_true", default=False)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--checkpoint_folder_path", type=str, default="checkpoint_path")
     parser.add_argument("--checkpoint_file_save", type=str, default="checkpoint.pth")
