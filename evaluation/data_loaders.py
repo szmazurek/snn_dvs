@@ -273,11 +273,11 @@ class DVSDatasetProper(Dataset):
         return self.transform(img)
 
     def __len__(self) -> int:
-        return len(self.all_files)
+        return len(self.all_samples)
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
         file_path = self.all_samples[index]
-        window = torch.cat([self.load_image(image) for image in file_path])
+        window = torch.cat([self.load_image(image) for image in file_path]).unsqueeze(1)
         label = torch.tensor(self.all_labels[index])
         return window, label
 
