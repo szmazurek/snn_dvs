@@ -226,7 +226,6 @@ class DVSDatasetProper(Dataset):
         self.transform = transforms.Compose(
             [
                 transforms.Resize((150, 400), interpolation=Image.NEAREST),
-                transforms.RandomHorizontalFlip(),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
             ]
@@ -320,7 +319,6 @@ class RGBDatasetTemporal(DVSDatasetProper):
         self.transform = transforms.Compose(
             [
                 transforms.Resize((150, 400)),
-                transforms.RandomHorizontalFlip(),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
                 transforms.Normalize(

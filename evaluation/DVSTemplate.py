@@ -179,7 +179,7 @@ def normal_training(args):
             wandb.log(
                 {
                     "train_acc": train_acc,
-                    "train_loss": train_loss / (n + i),
+                    "train_loss": train_loss / (i + 1),
                     "train_f1": train_f1,
                     "train_auroc": train_auroc,
                     "val_acc": val_acc,
@@ -226,14 +226,20 @@ def normal_training(args):
         )
         wandb.finish()
     if args.save_final_model:
+        dataset_save_path = "saved_datasets"
+        model_save_path = "saved_models"
         # save both the eval subset of the dataset and the trained model
+        if not os.path.exists(model_save_path):
+            os.makedirs(model_save_path, exist_ok=True)
+        if not os.path.exists(dataset_save_path):
+            os.makedirs(dataset_save_path, exist_ok=True)
         torch.save(
             test_dataset,
-            f"saved_datasets/timestep_{args.sample_timestep}_overlap_{args.sample_overlap}_batch_{args.batch_size}.pt",
+            f"{dataset_save_path}/timestep_{args.sample_timestep}_overlap_{args.sample_overlap}_batch_{args.batch_size}.pt",
         )
         torch.save(
             net.state_dict(),
-            f"saved_models/timestep_{args.sample_timestep}_overlap_{args.sample_overlap}_batch_{args.batch_size}.pt",
+            f"{model_save_path}/timestep_{args.sample_timestep}_overlap_{args.sample_overlap}_batch_{args.batch_size}.pt",
         )
 
 

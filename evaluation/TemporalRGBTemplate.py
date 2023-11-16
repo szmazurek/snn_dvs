@@ -175,7 +175,7 @@ def temporal_rgb_training(args):
             wandb.log(
                 {
                     "train_acc": train_acc,
-                    "train_loss": train_loss / (n + i),
+                    "train_loss": train_loss / (i + 1),
                     "train_f1": train_f1,
                     "train_auroc": train_auroc,
                     "val_acc": val_acc,
