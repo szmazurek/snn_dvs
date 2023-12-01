@@ -4,3 +4,4 @@ wandb*
 output*
 *pycache*
 saved*
+temp_chkpt*

@@ -13,7 +13,10 @@ from utils import (
 )
 from sklearn.model_selection import train_test_split
 from models import Resnet18
-from data_loaders import RGBDatasetTemporal
+from data_loaders import (
+    RGBDatasetTemporal,
+    DVSDatasetTemporalforNonTemporalNet,
+)
 from torchmetrics import Accuracy, F1Score, AUROC
 from torch.utils.data import Subset
 
@@ -35,12 +38,18 @@ def temporal_rgb_training(args):
 
     checkpoint_folder_path = args.checkpoint_folder_path
     checkpoint_file_save = args.checkpoint_file_save
-
-    full_dataset = RGBDatasetTemporal(
-        target_dir=args.dataset_path,
-        sample_len=args.sample_timestep,
-        overlap=args.sample_overlap,
-    )
+    if args.dvs_mode:
+        full_dataset = DVSDatasetTemporalforNonTemporalNet(
+            target_dir=args.dataset_path,
+            sample_len=args.sample_timestep,
+            overlap=args.sample_overlap,
+        )
+    else:
+        full_dataset = RGBDatasetTemporal(
+            target_dir=args.dataset_path,
+            sample_len=args.sample_timestep,
+            overlap=args.sample_overlap,
+        )
     labs = torch.tensor(full_dataset.all_labels)
 
     neg_count, pos_count = torch.unique(labs, return_counts=True)[1]
@@ -86,6 +95,7 @@ def temporal_rgb_training(args):
         pin_memory=True,
     )
     net = Resnet18(args.dvs_mode)
+    print(args.dvs_mode)
     net.to(device)
     optimizer = torch.optim.AdamW(
         net.parameters(), lr=args.lr, weight_decay=args.weight_decay

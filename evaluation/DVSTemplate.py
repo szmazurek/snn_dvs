@@ -8,8 +8,8 @@ from argparse import ArgumentParser
 from torch.utils.data import DataLoader
 from utils import train_val_dataset, unsqueeze_dim_if_missing
 from sklearn.model_selection import train_test_split
-from models import Resnet18_DVS
-from data_loaders import DVSDatasetRepeated, DVSDatasetProper
+from models import Resnet18_DVS, Resnet18_DVS_rgb
+from data_loaders import RGBDatasetTemporal, DVSDatasetProper
 from torchmetrics import Accuracy, F1Score, AUROC
 from torch.utils.data import Subset
 from spikingjelly.activation_based import functional
@@ -116,6 +116,9 @@ def normal_training(args):
         pred_list_train = torch.Tensor().to(device)
         for i, (img_train, label_train) in enumerate(train_data_loader):
             optimizer.zero_grad()
+            if i == 0:
+                print(img_train.shape)
+
             # label_val = label_val.permute(1, 0, 2).squeeze(2)
             label_train = label_train.to(device)
             img_train = img_train.permute(1, 0, 2, 3, 4)
@@ -134,6 +137,9 @@ def normal_training(args):
             loss_train.backward()
             optimizer.step()
             functional.reset_net(net)
+            if i % 100 == 0 and i > 0:
+                print(f"Completed batch {i}")
+
         train_acc = accuracy_metric(pred_list_train, label_list_train)
         train_f1 = f1_metric(pred_list_train, label_list_train)
         train_auroc = auroc_metric(pred_list_train, label_list_train)

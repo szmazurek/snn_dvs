@@ -34,8 +34,7 @@ class RGBDataset(Dataset):
         ]
         self.transform = transforms.Compose(
             [
-                transforms.Resize((150, 400)),
-                transforms.RandomHorizontalFlip(),
+                transforms.Resize((600, 1600)),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
                 transforms.Normalize(
@@ -86,8 +85,7 @@ class DVSDatasetAsRGB(Dataset):
         ]
         self.transform = transforms.Compose(
             [
-                transforms.Resize((150, 400), interpolation=Image.NEAREST),
-                transforms.RandomHorizontalFlip(),
+                transforms.Resize((600, 1600), interpolation=Image.NEAREST),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
             ]
@@ -109,7 +107,7 @@ class DVSDatasetAsRGB(Dataset):
 
 
 class DVSDatasetRepeated(Dataset):
-    """Abstraction representing a DVS based dataset, where eery sample
+    """Abstraction representing a DVS based dataset, where every sample
     is artificially transformed into timeseries via repeating one
     frame time_dim times.
     """
@@ -138,7 +136,6 @@ class DVSDatasetRepeated(Dataset):
         self.transform = transforms.Compose(
             [
                 transforms.Resize((150, 400), interpolation=Image.NEAREST),
-                transforms.RandomHorizontalFlip(),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
             ]
@@ -225,7 +222,7 @@ class DVSDatasetProper(Dataset):
         self.overlap = overlap
         self.transform = transforms.Compose(
             [
-                transforms.Resize((150, 400), interpolation=Image.NEAREST),
+                transforms.Resize((600, 1600), interpolation=Image.NEAREST),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
             ]
@@ -318,12 +315,41 @@ class RGBDatasetTemporal(DVSDatasetProper):
         super().__init__(target_dir, sample_len, overlap, per_frame_label_mode)
         self.transform = transforms.Compose(
             [
-                transforms.Resize((150, 400)),
+                transforms.Resize((600, 1600)),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
                 transforms.Normalize(
                     mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
                 ),
+            ]
+        )
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
+        file_path = self.all_samples[index]
+        window = torch.stack([self.load_image(image) for image in file_path])
+        label = torch.tensor(self.all_labels[index])
+        return window, label
+
+
+class DVSDatasetTemporalforNonTemporalNet(DVSDatasetProper):
+    """A class that loads DVS frames as a temporal sequence of images to be
+    evaluated with standard Resnet.
+    Only transforms are overriden (changed interpolation and normalization).
+    """
+
+    def __init__(
+        self,
+        target_dir: str,
+        sample_len: int = 4,
+        overlap: int = 0,
+        per_frame_label_mode: bool = False,
+    ) -> None:
+        super().__init__(target_dir, sample_len, overlap, per_frame_label_mode)
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize((600, 1600)),
+                transforms.PILToTensor(),
+                transforms.ConvertImageDtype(torch.float),
             ]
         )
 
