@@ -3,6 +3,186 @@ import torch
 import torch.nn as nn
 from spikingjelly.activation_based import surrogate, neuron, functional, layer
 from torchvision.models import resnet18, ResNet18_Weights
+from torch.autograd import Variable
+
+
+class ConvLSTMCell(nn.Module):
+    def __init__(self, input_channels, hidden_channels, kernel_size):
+        super(ConvLSTMCell, self).__init__()
+
+        assert hidden_channels % 2 == 0
+
+        self.input_channels = input_channels
+        self.hidden_channels = hidden_channels
+        self.kernel_size = kernel_size
+
+        self.padding = int(
+            (kernel_size - 1) / 2
+        )  # Padding to keep the same size
+
+        self.Wxi = nn.Conv2d(
+            self.input_channels,
+            self.hidden_channels,
+            self.kernel_size,
+            1,
+            self.padding,
+            bias=True,
+        )
+        self.Whi = nn.Conv2d(
+            self.hidden_channels,
+            self.hidden_channels,
+            self.kernel_size,
+            1,
+            self.padding,
+            bias=False,
+        )
+        self.Wxf = nn.Conv2d(
+            self.input_channels,
+            self.hidden_channels,
+            self.kernel_size,
+            1,
+            self.padding,
+            bias=True,
+        )
+        self.Whf = nn.Conv2d(
+            self.hidden_channels,
+            self.hidden_channels,
+            self.kernel_size,
+            1,
+            self.padding,
+            bias=False,
+        )
+        self.Wxc = nn.Conv2d(
+            self.input_channels,
+            self.hidden_channels,
+            self.kernel_size,
+            1,
+            self.padding,
+            bias=True,
+        )
+        self.Whc = nn.Conv2d(
+            self.hidden_channels,
+            self.hidden_channels,
+            self.kernel_size,
+            1,
+            self.padding,
+            bias=False,
+        )
+        self.Wxo = nn.Conv2d(
+            self.input_channels,
+            self.hidden_channels,
+            self.kernel_size,
+            1,
+            self.padding,
+            bias=True,
+        )
+        self.Who = nn.Conv2d(
+            self.hidden_channels,
+            self.hidden_channels,
+            self.kernel_size,
+            1,
+            self.padding,
+            bias=False,
+        )
+
+        self.Wci = None
+        self.Wcf = None
+        self.Wco = None
+
+    def forward(self, x, h, c):
+        ci = torch.sigmoid(self.Wxi(x) + self.Whi(h) + c * self.Wci)
+        cf = torch.sigmoid(self.Wxf(x) + self.Whf(h) + c * self.Wcf)
+        cc = cf * c + ci * torch.tanh(self.Wxc(x) + self.Whc(h))
+        co = torch.sigmoid(self.Wxo(x) + self.Who(h) + cc * self.Wco)
+        ch = co * torch.tanh(cc)
+        return ch, cc
+
+    def init_hidden(self, batch_size, hidden, shape):
+        if self.Wci is None:
+            self.Wci = nn.Parameter(torch.zeros(1, hidden, shape[0], shape[1]))
+            self.Wcf = nn.Parameter(torch.zeros(1, hidden, shape[0], shape[1]))
+            self.Wco = nn.Parameter(torch.zeros(1, hidden, shape[0], shape[1]))
+        else:
+            assert shape[0] == self.Wci.size()[2], "Input Height Mismatched!"
+            assert shape[1] == self.Wci.size()[3], "Input Width Mismatched!"
+        return (
+            Variable(torch.zeros(batch_size, hidden, shape[0], shape[1])),
+            Variable(torch.zeros(batch_size, hidden, shape[0], shape[1])),
+        )
+
+
+class ConvLSTM(nn.Module):
+    # input_channels corresponds to the first input feature map
+    # hidden state is a list of succeeding lstm layers.
+    def __init__(
+        self,
+        input_channels,
+        hidden_channels,
+        kernel_size,
+        n_layers=1,
+        frame_size=(128, 128),
+    ):
+        super(ConvLSTM, self).__init__()
+        self.input_channels = [input_channels] + hidden_channels
+        self.hidden_channels = hidden_channels
+        self.kernel_size = kernel_size
+        self.n_layers = n_layers
+        self.frame_size = frame_size
+        self.linear_1 = nn.Linear(81920, 1024)
+        self.linear_2 = nn.Linear(1024, 1)
+        self.relu = nn.ReLU()
+
+        for i in range(n_layers):
+            name = "cell{}".format(i)
+
+            cell = ConvLSTMCell(
+                self.input_channels[i],
+                self.hidden_channels[i],
+                self.kernel_size,
+            )
+            setattr(self, name, cell)
+            # pooling
+            name_pooling = "pooling{}".format(i)
+            height = int(self.frame_size[0] / (2 ** (i + 1)))
+            width = int(self.frame_size[1] / (2 ** (i + 1)))
+            pooling = nn.AdaptiveMaxPool2d((height, width))
+            setattr(self, name_pooling, pooling)
+
+    def forward(self, input):
+        b_size, timesteps, _, height, width = input.size()
+        for i in range(self.n_layers):
+            layer = getattr(self, "cell{}".format(i))
+            pooling = getattr(self, "pooling{}".format(i))
+
+            height_pooled = int(self.frame_size[0] / (2 ** (i + 1)))
+            width_pooled = int(self.frame_size[1] / (2 ** (i + 1)))
+            if i != 0:
+                o_prev = o
+                height = int(self.frame_size[0] / (2**i))
+                width = int(self.frame_size[1] / (2**i))
+            o = torch.zeros(
+                b_size,
+                timesteps,
+                self.hidden_channels[i],
+                height_pooled,
+                width_pooled,
+            )
+            h, c = layer.init_hidden(
+                b_size, self.hidden_channels[i], (height, width)
+            )
+            for timestep in range(timesteps):
+                if i == 0:
+                    timestep_frame = input[:, timestep, :, :, :]
+                else:
+                    timestep_frame = o_prev[:, timestep, :, :, :]
+                h, c = layer(timestep_frame, h, c)
+                o[:, timestep, :, :, :] = pooling(h)
+
+        o = o.flatten(start_dim=1)
+        o = self.linear_1(o)
+        o = self.relu(o)
+        o = self.linear_2(o)
+        return o
 
 
 class SNN_1(nn.Module):

@@ -148,7 +148,7 @@ class DVSDatasetRepeated(Dataset):
     def __len__(self) -> int:
         return len(self.all_files)
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         file_path = self.all_files[index]
         image = self.load_image(file_path).repeat(self.time_dim, 1, 1, 1)
         label = torch.tensor(self.all_labels[index])
@@ -163,6 +163,8 @@ class DVSDatasetProper(Dataset):
     Args:
         target_dir (str): directory with subfolders containing video
     frames.
+        target_size (Tuple[int,int]): Tuple of (height, width) denoting
+    final image size after the resizing transform. Defaults to (600,1600).
         sample_len (int, optional): length of a sample. Defaults to 4.
         overlap (int, optional): overlap between samples. Defaults to 0.
         per_frame_label_mode (bool, optional): if True, every frame in
@@ -172,6 +174,7 @@ class DVSDatasetProper(Dataset):
     def __init__(
         self,
         target_dir: str,
+        target_size: Tuple[int, int] = (600, 1600),
         sample_len: int = 4,
         overlap: int = 0,
         per_frame_label_mode: bool = False,
@@ -222,7 +225,7 @@ class DVSDatasetProper(Dataset):
         self.overlap = overlap
         self.transform = transforms.Compose(
             [
-                transforms.Resize((600, 1600), interpolation=Image.NEAREST),
+                transforms.Resize(target_size, interpolation=Image.NEAREST),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
             ]
@@ -291,7 +294,7 @@ class DVSDatasetProper(Dataset):
     def __len__(self) -> int:
         return len(self.all_samples)
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         file_path = self.all_samples[index]
         window = torch.cat(
             [self.load_image(image) for image in file_path]
@@ -308,14 +311,17 @@ class RGBDatasetTemporal(DVSDatasetProper):
     def __init__(
         self,
         target_dir: str,
+        target_size: Tuple[int, int] = (600, 1600),
         sample_len: int = 4,
         overlap: int = 0,
         per_frame_label_mode: bool = False,
     ) -> None:
-        super().__init__(target_dir, sample_len, overlap, per_frame_label_mode)
+        super().__init__(
+            target_dir, target_size, sample_len, overlap, per_frame_label_mode
+        )
         self.transform = transforms.Compose(
             [
-                transforms.Resize((600, 1600)),
+                transforms.Resize(target_size),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
                 transforms.Normalize(
@@ -324,7 +330,7 @@ class RGBDatasetTemporal(DVSDatasetProper):
             ]
         )
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         file_path = self.all_samples[index]
         window = torch.stack([self.load_image(image) for image in file_path])
         label = torch.tensor(self.all_labels[index])
@@ -340,20 +346,23 @@ class DVSDatasetTemporalforNonTemporalNet(DVSDatasetProper):
     def __init__(
         self,
         target_dir: str,
+        target_size: Tuple[int, int] = (600, 1600),
         sample_len: int = 4,
         overlap: int = 0,
         per_frame_label_mode: bool = False,
     ) -> None:
-        super().__init__(target_dir, sample_len, overlap, per_frame_label_mode)
+        super().__init__(
+            target_dir, target_size, sample_len, overlap, per_frame_label_mode
+        )
         self.transform = transforms.Compose(
             [
-                transforms.Resize((600, 1600)),
+                transforms.Resize(target_size),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
             ]
         )
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         file_path = self.all_samples[index]
         window = torch.stack([self.load_image(image) for image in file_path])
         label = torch.tensor(self.all_labels[index])

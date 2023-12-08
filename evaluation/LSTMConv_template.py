@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 from torch.utils.data import DataLoader
 from utils import train_val_dataset, unsqueeze_dim_if_missing
 from sklearn.model_selection import train_test_split
-from models import Resnet18_DVS, Resnet18_DVS_rgb
+from models import ConvLSTM
 from data_loaders import RGBDatasetTemporal, DVSDatasetProper
 from torchmetrics import Accuracy, F1Score, AUROC
 from torch.utils.data import Subset
@@ -35,25 +35,32 @@ def normal_training(args):
     checkpoint_folder_path = args.checkpoint_folder_path
     checkpoint_file_save = args.checkpoint_file_save
     N_ACCUMULATION_STEPS = args.grad_accumulation_steps
+    # full_dataset = RGBDataset(args.dataset_path)
+    # full_dataset = DVSDatasetCorrected(args.dataset_path, time_dim=args.sample_timesetp)
     if args.dvs_mode:
         full_dataset = DVSDatasetProper(
             args.dataset_path,
-            target_size=(args.height, args.width),
             sample_len=args.sample_timestep,
             overlap=args.sample_overlap,
             per_frame_label_mode=args.per_sample_label_model,
         )
-        net = Resnet18_DVS()
 
     else:
         full_dataset = RGBDatasetTemporal(
             args.dataset_path,
-            target_size=(args.height, args.width),
             sample_len=args.sample_timestep,
             overlap=args.sample_overlap,
             per_frame_label_mode=args.per_sample_label_model,
         )
-        net = Resnet18_DVS_rgb()
+    in_shape = full_dataset[0][0]
+    channels, height, width = in_shape[-3], in_shape[-2], in_shape[-1]
+    net = ConvLSTM(
+        channels,
+        [64, 16],
+        kernel_size=3,
+        n_layers=2,
+        frame_size=(height, width),
+    )
 
     if args.resume_training_model_path is not None:
         state_dict = torch.load(args.resume_training_model_path)
@@ -134,9 +141,7 @@ def normal_training(args):
             if i == 0:
                 print(img_train.shape)
 
-            # label_val = label_val.permute(1, 0, 2).squeeze(2)
             label_train = label_train.to(device)
-            img_train = img_train.permute(1, 0, 2, 3, 4)
             img_train = img_train.to(device).float()
             out_fr_train = net(img_train).squeeze().mean(0)
             out_fr_train = unsqueeze_dim_if_missing(out_fr_train)
@@ -180,9 +185,7 @@ def normal_training(args):
         pred_list_val = torch.Tensor().to(device)
         with torch.no_grad():
             for n, (img_val, label_val) in enumerate(val_data_loader):
-                # label_val = label_val.permute(1, 0, 2).squeeze(2)
                 label_val = label_val.to(device)
-                img_val = img_val.permute(1, 0, 2, 3, 4)
                 img_val = img_val.to(device).float()
                 out_fr_val = net(img_val).squeeze().mean(0)
                 out_fr_val = unsqueeze_dim_if_missing(out_fr_val)
@@ -230,9 +233,7 @@ def normal_training(args):
     pred_list_test = torch.Tensor().to(device)
     with torch.no_grad():
         for n, (img_test, label_test) in enumerate(test_data_loader):
-            # label_test = label_test.permute(1, 0, 2).squeeze(2)
             label_test = label_test.to(device)
-            img_test = img_test.permute(1, 0, 2, 3, 4)
             img_test = img_test.to(device).float()
             out_fr_test = net(img_test).squeeze().mean(0)
             out_fr_test = unsqueeze_dim_if_missing(out_fr_test)
@@ -290,8 +291,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--per_sample_label_model", action="store_true", default=False
     )
-    parser.add_argument("--img_height", type=int, default=600)
-    parser.add_argument("--img_width", type=int, default=1600)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--checkpoint_folder_path", type=str, default="checkpoint_path"
