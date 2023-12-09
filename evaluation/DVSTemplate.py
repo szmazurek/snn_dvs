@@ -15,6 +15,7 @@ from torch.utils.data import Subset
 from spikingjelly.activation_based import functional
 import gc
 from utils import EarlyStopping
+from accelerate import Accelerator
 
 api_key_file = open("./wandb_api_key.txt", "r")
 API_KEY = api_key_file.read()
@@ -30,15 +31,15 @@ def set_random_seeds(seed: int = 0) -> None:
 
 
 def normal_training(args):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    accelerator = Accelerator()
+    device = accelerator.device
     checkpoint_folder_path = args.checkpoint_folder_path
     checkpoint_file_save = args.checkpoint_file_save
     N_ACCUMULATION_STEPS = args.grad_accumulation_steps
     if args.dvs_mode:
         full_dataset = DVSDatasetProper(
             args.dataset_path,
-            target_size=(args.height, args.width),
+            target_size=(args.img_height, args.img_width),
             sample_len=args.sample_timestep,
             overlap=args.sample_overlap,
             per_frame_label_mode=args.per_sample_label_model,
@@ -48,7 +49,7 @@ def normal_training(args):
     else:
         full_dataset = RGBDatasetTemporal(
             args.dataset_path,
-            target_size=(args.height, args.width),
+            target_size=(args.img_height, args.img_width),
             sample_len=args.sample_timestep,
             overlap=args.sample_overlap,
             per_frame_label_mode=args.per_sample_label_model,
@@ -103,11 +104,18 @@ def normal_training(args):
         pin_memory=True,
     )
     functional.set_step_mode(net, "m")
-    net.to(device)
     optimizer = torch.optim.AdamW(
         net.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
-
+    (
+        net,
+        optimizer,
+        train_data_loader,
+        val_data_loader,
+        test_data_loader,
+    ) = accelerator.prepare(
+        net, optimizer, train_data_loader, val_data_loader, test_data_loader
+    )
     pos_weight_tensor = torch.full([1], pos_weight)
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor).to(device)
     accuracy_metric = Accuracy("binary").to(device)
@@ -128,8 +136,8 @@ def normal_training(args):
     for epoch in range(0, epochs):
         net.train()
         train_loss = 0
-        label_list_train = torch.Tensor().to(device)
-        pred_list_train = torch.Tensor().to(device)
+        label_list_train = torch.Tensor()
+        pred_list_train = torch.Tensor()
         for i, (img_train, label_train) in enumerate(train_data_loader):
             if i == 0:
                 print(img_train.shape)
@@ -222,7 +230,7 @@ def normal_training(args):
         if early_stopping.early_stop:
             print("Early stopping")
             break
-    best_model_state = torch.load(f"temp_chkpt/{wandb.run.id}.pt")
+    best_model_state = torch.load(f"temp_chkpt/{run_id}.pt")
     net.load_state_dict(best_model_state)
     net.eval()
     test_loss = 0

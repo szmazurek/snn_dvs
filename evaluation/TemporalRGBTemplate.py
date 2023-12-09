@@ -19,6 +19,7 @@ from data_loaders import (
 )
 from torchmetrics import Accuracy, F1Score, AUROC
 from torch.utils.data import Subset
+from utils import EarlyStopping
 
 api_key_file = open("./wandb_api_key.txt", "r")
 API_KEY = api_key_file.read()
@@ -41,12 +42,14 @@ def temporal_rgb_training(args):
     if args.dvs_mode:
         full_dataset = DVSDatasetTemporalforNonTemporalNet(
             target_dir=args.dataset_path,
+            target_size=(args.img_height, args.img_width),
             sample_len=args.sample_timestep,
             overlap=args.sample_overlap,
         )
     else:
         full_dataset = RGBDatasetTemporal(
             target_dir=args.dataset_path,
+            target_size=(args.img_height, args.img_width),
             sample_len=args.sample_timestep,
             overlap=args.sample_overlap,
         )
@@ -95,7 +98,10 @@ def temporal_rgb_training(args):
         pin_memory=True,
     )
     net = Resnet18(args.dvs_mode)
-    print(args.dvs_mode)
+    if args.resume_training_model_path is not None:
+        state_dict = torch.load(args.resume_training_model_path)
+        net.load_state_dict(state_dict)
+        print(f"Restoring model from {args.resume_training_model_path}")
     net.to(device)
     optimizer = torch.optim.AdamW(
         net.parameters(), lr=args.lr, weight_decay=args.weight_decay
@@ -113,7 +119,10 @@ def temporal_rgb_training(args):
             group=args.wandb_group,
             name=f"{args.wandb_exp_name}",
         )
-
+        run_id = wandb.run.id
+    early_stopping = EarlyStopping(
+        patience=8, delta=0.01, path=f"temp_chkpt/{run_id}.pt"
+    )
     for epoch in range(0, epochs):
         net.train()
         train_loss = 0
@@ -141,6 +150,9 @@ def temporal_rgb_training(args):
             train_loss += loss_train.detach().item()
             loss_train.backward()
             optimizer.step()
+            if i % 10 == 0 and i > 0:
+                print(f"Completed batch {i}")
+
         train_acc = accuracy_metric(pred_list_train, label_list_train)
         train_f1 = f1_metric(pred_list_train, label_list_train)
         train_auroc = auroc_metric(pred_list_train, label_list_train)
@@ -150,7 +162,6 @@ def temporal_rgb_training(args):
         print(
             f"Train epoch {epoch}, acc {train_acc}, f1 {train_f1}, auroc {train_auroc}"
         )
-
         net.eval()
         val_loss = 0
         label_list_val = torch.Tensor().to(device)
@@ -194,6 +205,12 @@ def temporal_rgb_training(args):
                     "val_auroc": val_auroc,
                 }
             )
+        early_stopping(val_loss / (n + 1), net)
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
+    best_model_state = torch.load(f"temp_chkpt/{run_id}.pt")
+    net.load_state_dict(best_model_state)
     net.eval()
     test_loss = 0
     label_list_test = torch.Tensor().to(device)
@@ -233,6 +250,19 @@ def temporal_rgb_training(args):
             }
         )
         wandb.finish()
+    if args.save_final_model:
+        dataset_save_path = "saved_datasets"
+        model_save_path = "saved_models"
+        # save both the eval subset of the dataset and the trained model
+        if not os.path.exists(model_save_path):
+            os.makedirs(model_save_path, exist_ok=True)
+        if not os.path.exists(dataset_save_path):
+            os.makedirs(dataset_save_path, exist_ok=True)
+        torch.save(test_dataset, f"{dataset_save_path}/{run_id}.pt")
+        torch.save(
+            net.state_dict(),
+            f"{model_save_path}/{run_id}.pt",
+        )
 
 
 if __name__ == "__main__":
@@ -249,7 +279,12 @@ if __name__ == "__main__":
     parser.add_argument("--sample_timestep", type=int, default=4)
     parser.add_argument("--sample_overlap", type=int, default=0)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--img_height", type=int, default=600)
+    parser.add_argument("--img_width", type=int, default=1600)
     parser.add_argument("--dvs_mode", action="store_true", default=False)
+    parser.add_argument(
+        "--save_final_model", action="store_true", default=False
+    )
     parser.add_argument(
         "--checkpoint_folder_path", type=str, default="checkpoint_path"
     )
@@ -260,6 +295,12 @@ if __name__ == "__main__":
     parser.add_argument("--wandb_project", type=str, default="project_name")
     parser.add_argument("--wandb_group", type=str, default="group_name")
     parser.add_argument("--wandb_exp_name", type=str, default="exp_name")
+    parser.add_argument(
+        "--resume_training_model_path",
+        type=str,
+        default=None,
+        help="If set, loads the model state dict from specified path and continues training",
+    )
     args = parser.parse_args()
     set_random_seeds(args.seed)
     temporal_rgb_training(args)
