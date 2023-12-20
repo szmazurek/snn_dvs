@@ -10,9 +10,15 @@ import re
 from operator import itemgetter
 from itertools import groupby
 
+from torchvision.transforms._transforms_video import NormalizeVideo
+
+from pytorchvideo.transforms import ShortSideScale
+
 
 class RGBDataset(Dataset):
-    def __init__(self, target_dir: str) -> None:
+    def __init__(
+        self, target_dir: str, target_size: Tuple[int, int] = (600, 1600)
+    ) -> None:
         self.all_folders = [
             os.path.join(target_dir, directory)
             for directory in os.listdir(target_dir)
@@ -34,7 +40,7 @@ class RGBDataset(Dataset):
         ]
         self.transform = transforms.Compose(
             [
-                transforms.Resize((600, 1600)),
+                transforms.Resize(target_size),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
                 transforms.Normalize(
@@ -63,7 +69,9 @@ class DVSDatasetAsRGB(Dataset):
     with different resize method and not normalizing to ImageNet images
     """
 
-    def __init__(self, target_dir: str) -> None:
+    def __init__(
+        self, target_dir: str, target_size: Tuple[int, int] = (600, 1600)
+    ) -> None:
         self.all_folders = [
             os.path.join(target_dir, directory)
             for directory in os.listdir(target_dir)
@@ -85,7 +93,7 @@ class DVSDatasetAsRGB(Dataset):
         ]
         self.transform = transforms.Compose(
             [
-                transforms.Resize((600, 1600), interpolation=Image.NEAREST),
+                transforms.Resize(target_size, interpolation=Image.NEAREST),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
             ]

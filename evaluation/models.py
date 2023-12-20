@@ -120,7 +120,9 @@ class ConvLSTM(nn.Module):
         hidden_channels,
         kernel_size,
         n_layers=1,
+        timestep=6,
         frame_size=(128, 128),
+        device=torch.device("cpu"),
     ):
         super(ConvLSTM, self).__init__()
         self.input_channels = [input_channels] + hidden_channels
@@ -128,10 +130,9 @@ class ConvLSTM(nn.Module):
         self.kernel_size = kernel_size
         self.n_layers = n_layers
         self.frame_size = frame_size
-        self.linear_1 = nn.Linear(81920, 1024)
-        self.linear_2 = nn.Linear(1024, 1)
-        self.relu = nn.ReLU()
 
+        self.relu = nn.ReLU()
+        self.device = device
         for i in range(n_layers):
             name = "cell{}".format(i)
 
@@ -147,6 +148,19 @@ class ConvLSTM(nn.Module):
             width = int(self.frame_size[1] / (2 ** (i + 1)))
             pooling = nn.AdaptiveMaxPool2d((height, width))
             setattr(self, name_pooling, pooling)
+
+        final_channels = hidden_channels[-1]
+        final_height = int(
+            frame_size[0] / (n_layers * 2),
+        )
+        final_width = int(
+            frame_size[1] / (n_layers * 2),
+        )
+        neurons_first_fc = (
+            timestep * final_channels * final_height * final_width
+        )
+        self.linear_1 = nn.Linear(neurons_first_fc, 1024)
+        self.linear_2 = nn.Linear(1024, 1)
 
     def forward(self, input):
         b_size, timesteps, _, height, width = input.size()
@@ -166,18 +180,22 @@ class ConvLSTM(nn.Module):
                 self.hidden_channels[i],
                 height_pooled,
                 width_pooled,
-            )
+            ).to(self.device)
             h, c = layer.init_hidden(
                 b_size, self.hidden_channels[i], (height, width)
             )
+            layer = layer.to(self.device)
+            h = h.to(self.device)
+            c = c.to(self.device)
+
             for timestep in range(timesteps):
                 if i == 0:
                     timestep_frame = input[:, timestep, :, :, :]
                 else:
                     timestep_frame = o_prev[:, timestep, :, :, :]
+
                 h, c = layer(timestep_frame, h, c)
                 o[:, timestep, :, :, :] = pooling(h)
-
         o = o.flatten(start_dim=1)
         o = self.linear_1(o)
         o = self.relu(o)
@@ -336,6 +354,23 @@ def Resnet18(dvs_mode=False):
             kernel_size=(7, 7),
             stride=(2, 2),
             padding=(3, 3),
+            bias=False,
+        )
+    return net
+
+
+def slow_r50(dvs_mode=False):
+    net = torch.hub.load(
+        "facebookresearch/pytorchvideo", "slow_r50", pretrained=True
+    )
+    net.blocks[-1].proj = torch.nn.Linear(2048, 1)
+    if dvs_mode:
+        net.blocks[0].conv = torch.nn.Conv3d(
+            1,
+            64,
+            kernel_size=(1, 7, 7),
+            stride=(1, 2, 2),
+            padding=(0, 3, 3),
             bias=False,
         )
     return net

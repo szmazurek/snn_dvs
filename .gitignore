@@ -5,3 +5,5 @@ output*
 *pycache*
 saved*
 temp_chkpt*
+*env/
+results/

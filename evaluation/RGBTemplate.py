@@ -213,11 +213,15 @@ def snn_loop(args):
     checkpoint_folder_path = args.checkpoint_folder_path
     checkpoint_file_save = args.checkpoint_file_save
     if args.dvs_mode:
-        full_dataset = DVSDatasetAsRGB(args.dataset_path)
+        full_dataset = DVSDatasetAsRGB(
+            args.dataset_path, target_size=(args.img_height, args.img_width)
+        )
         net = Resnet18_DVS()
 
     else:
-        full_dataset = RGBDataset(args.dataset_path)
+        full_dataset = RGBDataset(
+            args.dataset_path, target_size=(args.img_height, args.img_width)
+        )
         net = Resnet18_DVS_rgb()
     labs = torch.tensor(full_dataset.all_labels)
 
@@ -282,7 +286,7 @@ def snn_loop(args):
             name=f"{args.wandb_exp_name}",
         )
     early_stopping = EarlyStopping(
-        patience=3, delta=0.01, path=f"temp_chkpt/{wandb.run.id}.pt"
+        patience=8, delta=0.01, path=f"temp_chkpt/{wandb.run.id}.pt"
     )
     functional.set_step_mode(net, "s")
     for epoch in range(0, epochs):
@@ -404,9 +408,13 @@ def normal_training(args):
     checkpoint_folder_path = args.checkpoint_folder_path
     checkpoint_file_save = args.checkpoint_file_save
     if args.dvs_mode:
-        full_dataset = DVSDatasetAsRGB(args.dataset_path)
+        full_dataset = DVSDatasetAsRGB(
+            args.dataset_path, target_size=(args.img_height, args.img_width)
+        )
     else:
-        full_dataset = RGBDataset(args.dataset_path)
+        full_dataset = RGBDataset(
+            args.dataset_path, target_size=(args.img_height, args.img_width)
+        )
     labs = torch.tensor(full_dataset.all_labels)
 
     neg_count, pos_count = torch.unique(labs, return_counts=True)[1]
@@ -470,7 +478,7 @@ def normal_training(args):
             name=f"{args.wandb_exp_name}",
         )
     early_stopping = EarlyStopping(
-        patience=5, delta=0.01, path=f"temp_chkpt/{wandb.run.id}.pt"
+        patience=8, delta=0.01, path=f"temp_chkpt/{wandb.run.id}.pt"
     )
 
     for epoch in range(0, epochs):
@@ -600,6 +608,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--checkpoint_folder_path", type=str, default="checkpoint_path"
     )
+    parser.add_argument("--img_height", type=int, default=600)
+    parser.add_argument("--img_width", type=int, default=1600)
     parser.add_argument(
         "--checkpoint_file_save", type=str, default="checkpoint.pth"
     )

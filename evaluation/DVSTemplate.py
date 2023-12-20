@@ -15,7 +15,6 @@ from torch.utils.data import Subset
 from spikingjelly.activation_based import functional
 import gc
 from utils import EarlyStopping
-from accelerate import Accelerator
 
 api_key_file = open("./wandb_api_key.txt", "r")
 API_KEY = api_key_file.read()
@@ -31,8 +30,7 @@ def set_random_seeds(seed: int = 0) -> None:
 
 
 def normal_training(args):
-    accelerator = Accelerator()
-    device = accelerator.device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint_folder_path = args.checkpoint_folder_path
     checkpoint_file_save = args.checkpoint_file_save
     N_ACCUMULATION_STEPS = args.grad_accumulation_steps
@@ -92,7 +90,7 @@ def normal_training(args):
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=4,
-        prefetch_factor=1,
+        prefetch_factor=3,
         pin_memory=True,
     )
     test_data_loader = DataLoader(
@@ -106,15 +104,6 @@ def normal_training(args):
     functional.set_step_mode(net, "m")
     optimizer = torch.optim.AdamW(
         net.parameters(), lr=args.lr, weight_decay=args.weight_decay
-    )
-    (
-        net,
-        optimizer,
-        train_data_loader,
-        val_data_loader,
-        test_data_loader,
-    ) = accelerator.prepare(
-        net, optimizer, train_data_loader, val_data_loader, test_data_loader
     )
     pos_weight_tensor = torch.full([1], pos_weight)
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor).to(device)
@@ -133,11 +122,12 @@ def normal_training(args):
     early_stopping = EarlyStopping(
         patience=8, delta=0.01, path=f"temp_chkpt/{run_id}.pt"
     )
+    net = net.to(device)
     for epoch in range(0, epochs):
         net.train()
         train_loss = 0
-        label_list_train = torch.Tensor()
-        pred_list_train = torch.Tensor()
+        label_list_train = torch.Tensor().to(device)
+        pred_list_train = torch.Tensor().to(device)
         for i, (img_train, label_train) in enumerate(train_data_loader):
             if i == 0:
                 print(img_train.shape)
