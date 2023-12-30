@@ -1,10 +1,7 @@
 import torch
-from data_loaders import RGBDatasetTemporal, DVSDatasetProper
 from spikingjelly.activation_based import functional
 from models import Resnet18_DVS
 from utils import (
-    perform_single_sample_time_dimension_forward_pass,
-    perform_forward_pass_on_full_batch,
     unsqueeze_dim_if_missing,
 )
 from torchmetrics import AUROC, Accuracy, F1Score
@@ -202,6 +199,7 @@ def eval_horizon(args):
 
     plt.bar(labels, acc)
     plt.xlabel("Extended label")
+    plt.ylim([0, 1.0])
     plt.ylabel("Accuracy")
     plt.savefig(
         os.path.join(
