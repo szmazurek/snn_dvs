@@ -10,13 +10,31 @@ from models import slow_r50
 
 from argparse import ArgumentParser
 
+def assign_label(tensor: torch.Tensor) -> int:
+    """Detect if in the given tensor of numbers there occurs a situation at any place when the 1 is followed by 0.
+    If yes, assigns label 100, otherwise sum of the numbers in tensor.
+    """
+    assert tensor.dim() == 1, "Tensor must be 1-dimensional"
+    assert torch.all(tensor == 0 | (tensor == 1)), "Tensor must contain only 0s or 1s"
+    nonzero = tensor.nonzero()
+    if nonzero.numel() == 0:
+        return 0 # if negative sample, return 0
+    if len(tensor) -1 != nonzero[-1]:
+        # return -1 # if ones occur, but there exists any 0 after them, return 1
+        return -tensor.sum().item()
+    recursive_difference_tensor = torch.diff(nonzero, dim=0)
+    if torch.any(recursive_difference_tensor != 1):
+        return 100 # if ones occur, but there exists any 0 between them, return 1
+    return tensor.sum().item()
+
 
 def generate_extended_labels_from_sample(set_of_frame_filenames):
-    per_frame_labels = [
+    per_frame_labels = torch.tensor([
         int(os.path.basename(frame).split(".")[0].split("-")[1])
         for frame in set_of_frame_filenames
-    ]
-    per_frame_label = sum(per_frame_labels)
+    ])
+    per_frame_label = assign_label(per_frame_labels)
+    # per_frame_label = sum(per_frame_labels)
     return per_frame_label
 
 
@@ -140,7 +158,9 @@ def eval_horizon(args):
         extended_labels.append(
             generate_extended_labels_from_sample(frame_filename)
         )
-
+    dataloader_len = len(loader)
+    loss_fn = torch.nn.BCEWithLogitsLoss(reduction="none").to(device)
+    loss_values = torch.Tensor().to(device)
     correct_preds_dict = {}
     total_preds_for_extended_label_dict = {}
     with torch.no_grad():
@@ -150,11 +170,13 @@ def eval_horizon(args):
             ]
             img_test = img_test.permute(0, 2, 1, 3, 4).to(device).float()
             label_test = label_test.to(device)
-            logits = torch.sigmoid(model(img_test).squeeze()).cpu()
+            preds = model(img_test).squeeze()
+            loss = loss_fn(preds, label_test.float())
+            loss_values = torch.cat((loss_values,loss),dim=0)
+            logits = torch.sigmoid(preds).cpu()
             pred = torch.where(
                 logits > args.predictive_horizon_threshold, 1, 0
             )
-            print(len(extended_labels_batch))
             for i, extended_label in enumerate(extended_labels_batch):
                 if (
                     extended_label
@@ -168,6 +190,14 @@ def eval_horizon(args):
                         correct_preds_dict[extended_label] = 1
                     else:
                         correct_preds_dict[extended_label] += 1
+            print(f"Processed {n+1} batches out of {dataloader_len}")
+
+    with open(
+        os.path.join(
+            exp_results_save_path,f"horizon_{args.predictive_horizon_threshold}_losses.json"
+        ), "w"
+    ) as f:
+        json.dump(loss_values.tolist(),f)
 
     with open(
         os.path.join(
