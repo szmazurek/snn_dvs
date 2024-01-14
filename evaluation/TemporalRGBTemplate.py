@@ -1,37 +1,27 @@
 import wandb
 import torch
 import os
-import numpy as np
-import random
 import torch.nn as nn
 from argparse import ArgumentParser
 from torch.utils.data import DataLoader
 from utils import (
-    train_val_dataset,
+    train_val_test_split,
     unsqueeze_dim_if_missing,
-    perform_forward_pass_on_full_batch,
+    perform_forward_pass_on_temporal_batch,
+    set_random_seeds,
 )
-from sklearn.model_selection import train_test_split
 from models import Resnet18
 from data_loaders import (
     RGBDatasetTemporal,
     DVSDatasetTemporalforNonTemporalNet,
 )
 from torchmetrics import Accuracy, F1Score, AUROC
-from torch.utils.data import Subset
 from utils import EarlyStopping
 
 api_key_file = open("./wandb_api_key.txt", "r")
 API_KEY = api_key_file.read()
 api_key_file.close()
 os.environ["WANDB_API_KEY"] = API_KEY
-
-
-def set_random_seeds(seed: int = 0) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    return None
 
 
 def temporal_rgb_training(args):
@@ -53,40 +43,28 @@ def temporal_rgb_training(args):
             sample_len=args.sample_timestep,
             overlap=args.sample_overlap,
         )
-    labs = torch.tensor(full_dataset.all_labels)
-
-    neg_count, pos_count = torch.unique(labs, return_counts=True)[1]
-    pos_weight = neg_count / pos_count
-    labels = full_dataset.all_labels
-    data_indices = np.arange(len(labels))
-    train_idx, test_idx = train_test_split(
-        data_indices,
-        test_size=args.test_size,
-        stratify=labels,
-        random_state=args.seed,
+    (
+        train_dataset,
+        val_dataset,
+        test_dataset,
+        pos_weight,
+    ) = train_val_test_split(
+        full_dataset, args.val_size, args.test_size, args.seed
     )
-    train_dataset = Subset(full_dataset, train_idx)
-    test_dataset = Subset(full_dataset, test_idx)
-    train_val_ds = train_val_dataset(train_dataset, val_split=args.val_size)
-    print(f"Dataset sizes")
-    print(f"Train {len(train_val_ds['train'])}")
-    print(f"Val {len(train_val_ds['val'])}")
-    print(f"Test {len(test_dataset)}")
-
     train_data_loader = DataLoader(
-        train_val_ds["train"],
+        train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=6,
         pin_memory=True,
-        prefetch_factor=3,
+        prefetch_factor=5,
     )
     val_data_loader = DataLoader(
-        train_val_ds["val"],
+        val_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=4,
-        prefetch_factor=1,
+        num_workers=6,
+        prefetch_factor=5,
         pin_memory=True,
     )
     test_data_loader = DataLoader(
@@ -133,7 +111,7 @@ def temporal_rgb_training(args):
             label_train = label_train.to(device)
             img_train = img_train.to(device).float()
             out_fr_train = (
-                (perform_forward_pass_on_full_batch(net, img_train))
+                (perform_forward_pass_on_temporal_batch(net, img_train))
                 .squeeze(2)
                 .mean(1)
             )
@@ -171,7 +149,7 @@ def temporal_rgb_training(args):
                 label_val = label_val.to(device)
                 img_val = img_val.to(device).float()
                 out_fr_val = (
-                    perform_forward_pass_on_full_batch(net, img_val)
+                    perform_forward_pass_on_temporal_batch(net, img_val)
                     .squeeze(2)
                     .mean(1)
                 )
@@ -220,7 +198,7 @@ def temporal_rgb_training(args):
             label_test = label_test.to(device)
             img_test = img_test.to(device).float()
             out_fr_test = (
-                perform_forward_pass_on_full_batch(net, img_test)
+                perform_forward_pass_on_temporal_batch(net, img_test)
                 .squeeze(2)
                 .mean(1)
             )

@@ -1,17 +1,17 @@
 import wandb
 import torch
 import os
-import numpy as np
-import random
 import torch.nn as nn
 from argparse import ArgumentParser
 from torch.utils.data import DataLoader
-from utils import train_val_dataset, unsqueeze_dim_if_missing
-from sklearn.model_selection import train_test_split
+from utils import (
+    train_val_test_split,
+    unsqueeze_dim_if_missing,
+    set_random_seeds,
+)
 from models import Resnet18_DVS, Resnet18_DVS_rgb
 from data_loaders import RGBDatasetTemporal, DVSDatasetProper
 from torchmetrics import Accuracy, F1Score, AUROC
-from torch.utils.data import Subset
 from spikingjelly.activation_based import functional
 import gc
 from utils import EarlyStopping
@@ -20,13 +20,6 @@ api_key_file = open("./wandb_api_key.txt", "r")
 API_KEY = api_key_file.read()
 api_key_file.close()
 os.environ["WANDB_API_KEY"] = API_KEY
-
-
-def set_random_seeds(seed: int = 0) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    return None
 
 
 def normal_training(args):
@@ -58,46 +51,41 @@ def normal_training(args):
         state_dict = torch.load(args.resume_training_model_path)
         net.load_state_dict(state_dict)
         print(f"Restoring model from {args.resume_training_model_path}")
-    labs = torch.tensor(full_dataset.all_labels)
-    neg_count, pos_count = torch.unique(labs, return_counts=True)[1]
-    pos_weight = neg_count / pos_count
-    labels = full_dataset.all_labels
-    data_indices = np.arange(len(labels))
-    train_idx, test_idx = train_test_split(
-        data_indices,
-        test_size=args.test_size,
-        stratify=labels,
-        random_state=args.seed,
-    )
-    train_dataset = Subset(full_dataset, train_idx)
-    test_dataset = Subset(full_dataset, test_idx)
-    train_val_ds = train_val_dataset(train_dataset, val_split=args.val_size)
-    print(f"Dataset sizes")
-    print(f"Train {len(train_val_ds['train'])}")
-    print(f"Val {len(train_val_ds['val'])}")
-    print(f"Test {len(test_dataset)}")
 
+    (
+        train_dataset,
+        val_dataset,
+        test_dataset,
+        pos_weight,
+    ) = train_val_test_split(
+        full_dataset, args.val_size, args.test_size, args.seed
+    )
+    print(f"Dataset sizes")
+
+    print(f"Train {len(train_dataset)}")
+    print(f"Val {len(val_dataset)}")
+    print(f"Test {len(test_dataset)}")
     train_data_loader = DataLoader(
-        train_val_ds["train"],
+        train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=6,
         pin_memory=True,
-        prefetch_factor=3,
+        prefetch_factor=5,
     )
     val_data_loader = DataLoader(
-        train_val_ds["val"],
+        val_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=4,
-        prefetch_factor=3,
+        num_workers=6,
+        prefetch_factor=5,
         pin_memory=True,
     )
     test_data_loader = DataLoader(
         test_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=2,
         prefetch_factor=1,
         pin_memory=True,
     )
@@ -136,7 +124,10 @@ def normal_training(args):
             label_train = label_train.to(device)
             img_train = img_train.permute(1, 0, 2, 3, 4)
             img_train = img_train.to(device).float()
-            out_fr_train = net(img_train).squeeze().mean(0)
+            out_fr_train = (
+                net(img_train).squeeze().mean(0)
+            )  # for standard approach
+            # out_fr_train = net(img_train).squeeze(1)
             out_fr_train = unsqueeze_dim_if_missing(out_fr_train)
             pred_list_train = torch.cat(
                 (pred_list_train, out_fr_train.detach()), dim=0
@@ -183,6 +174,8 @@ def normal_training(args):
                 img_val = img_val.permute(1, 0, 2, 3, 4)
                 img_val = img_val.to(device).float()
                 out_fr_val = net(img_val).squeeze().mean(0)
+                # out_fr_val = net(img_val).squeeze(1)
+
                 out_fr_val = unsqueeze_dim_if_missing(out_fr_val)
 
                 pred_list_val = torch.cat(
@@ -233,6 +226,7 @@ def normal_training(args):
             img_test = img_test.permute(1, 0, 2, 3, 4)
             img_test = img_test.to(device).float()
             out_fr_test = net(img_test).squeeze().mean(0)
+            # out_fr_test = net(img_test).squeeze(1)
             out_fr_test = unsqueeze_dim_if_missing(out_fr_test)
             pred_list_test = torch.cat(
                 (pred_list_test, out_fr_test.detach()), dim=0

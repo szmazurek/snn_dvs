@@ -1,17 +1,18 @@
 import wandb
 import torch
 import os
-import numpy as np
-import random
+
 import torch.nn as nn
 from argparse import ArgumentParser
 from torch.utils.data import DataLoader
-from utils import train_val_dataset, unsqueeze_dim_if_missing
-from sklearn.model_selection import train_test_split
-from models import ConvLSTM, slow_r50
+from utils import (
+    train_val_test_split,
+    unsqueeze_dim_if_missing,
+    set_random_seeds,
+)
+from models import  slow_r50
 from data_loaders import RGBDatasetTemporal, DVSDatasetProper
 from torchmetrics import Accuracy, F1Score, AUROC
-from torch.utils.data import Subset
 import gc
 from utils import EarlyStopping
 
@@ -19,13 +20,6 @@ api_key_file = open("./wandb_api_key.txt", "r")
 API_KEY = api_key_file.read()
 api_key_file.close()
 os.environ["WANDB_API_KEY"] = API_KEY
-
-
-def set_random_seeds(seed: int = 0) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    return None
 
 
 def normal_training(args):
@@ -53,56 +47,45 @@ def normal_training(args):
             overlap=args.sample_overlap,
             per_frame_label_mode=args.per_sample_label_model,
         )
-    # net = slow_r50(args.dvs_mode).to(device)
-    channels = 1 if args.dvs_mode else 3
+    net = slow_r50(args.dvs_mode).to(device)
+    # channels = 1 if args.dvs_mode else 3
 
-    net = ConvLSTM(
-        channels,
-        [64, 16],
-        kernel_size=3,
-        timestep=args.sample_timestep,
-        n_layers=2,
-        frame_size=(args.img_height, args.img_width),
-        device=device,
-    ).to(device)
+    # net = ConvLSTM(
+    #     channels,
+    #     [64, 16],
+    #     kernel_size=3,
+    #     timestep=args.sample_timestep,
+    #     n_layers=2,
+    #     frame_size=(args.img_height, args.img_width),
+    #     device=device,
+    # ).to(device)
 
     if args.resume_training_model_path is not None:
         state_dict = torch.load(args.resume_training_model_path)
         net.load_state_dict(state_dict)
         print(f"Restoring model from {args.resume_training_model_path}")
-    labs = torch.tensor(full_dataset.all_labels)
-    neg_count, pos_count = torch.unique(labs, return_counts=True)[1]
-    pos_weight = neg_count / pos_count
-    labels = full_dataset.all_labels
-    data_indices = np.arange(len(labels))
-    train_idx, test_idx = train_test_split(
-        data_indices,
-        test_size=args.test_size,
-        stratify=labels,
-        random_state=args.seed,
+    (
+        train_dataset,
+        val_dataset,
+        test_dataset,
+        pos_weight,
+    ) = train_val_test_split(
+        full_dataset, args.val_size, args.test_size, args.seed
     )
-    train_dataset = Subset(full_dataset, train_idx)
-    test_dataset = Subset(full_dataset, test_idx)
-    train_val_ds = train_val_dataset(train_dataset, val_split=args.val_size)
-    print(f"Dataset sizes")
-    print(f"Train {len(train_val_ds['train'])}")
-    print(f"Val {len(train_val_ds['val'])}")
-    print(f"Test {len(test_dataset)}")
-
     train_data_loader = DataLoader(
-        train_val_ds["train"],
+        train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=6,
         pin_memory=True,
-        prefetch_factor=3,
+        prefetch_factor=5,
     )
     val_data_loader = DataLoader(
-        train_val_ds["val"],
+        val_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=4,
-        prefetch_factor=1,
+        num_workers=6,
+        prefetch_factor=5,
         pin_memory=True,
     )
     test_data_loader = DataLoader(
@@ -143,7 +126,7 @@ def normal_training(args):
             if i == 0:
                 print(img_train.shape)
             label_train = label_train.to(device)
-            img_train = img_train.to(device)#.permute(0, 2, 1, 3, 4).float()
+            img_train = img_train.to(device).permute(0, 2, 1, 3, 4).float()
             out_fr_train = net(img_train)
             out_fr_train = out_fr_train.squeeze()
             out_fr_train = unsqueeze_dim_if_missing(out_fr_train)
@@ -187,7 +170,7 @@ def normal_training(args):
         with torch.no_grad():
             for n, (img_val, label_val) in enumerate(val_data_loader):
                 label_val = label_val.to(device)
-                img_val = img_val.to(device)#.permute(0, 2, 1, 3, 4).float()
+                img_val = img_val.to(device).permute(0, 2, 1, 3, 4).float()
                 out_fr_val = net(img_val).squeeze()
                 out_fr_val = unsqueeze_dim_if_missing(out_fr_val)
 
@@ -234,7 +217,7 @@ def normal_training(args):
     with torch.no_grad():
         for n, (img_test, label_test) in enumerate(test_data_loader):
             label_test = label_test.to(device)
-            img_test = img_test.to(device)#.permute(0, 2, 1, 3, 4).float()
+            img_test = img_test.to(device).permute(0, 2, 1, 3, 4).float()
             out_fr_test = net(img_test).squeeze()
             out_fr_test = unsqueeze_dim_if_missing(out_fr_test)
             pred_list_test = torch.cat(

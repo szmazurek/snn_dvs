@@ -319,6 +319,24 @@ class CNN_2(nn.Module):
         return x_seq
 
 
+class ResNet18VoteLayer(nn.Module):
+    def __init__(self, num_classes: int):
+        super().__init__()
+        self.feature_extractor = Resnet18_DVS()
+        self.voting = nn.AdaptiveAvgPool1d(num_classes)
+
+    def forward(self, x: torch.Tensor):
+        # x.shape = [N, voter_num * C]
+        # ret.shape = [N, C]
+        features = self.feature_extractor(x).squeeze(2).permute(1, 0)
+        return self.voting(features)
+
+
+def Resnet18_DVS_voting():
+    net = ResNet18VoteLayer(1)
+    return net
+
+
 def Resnet18_DVS():
     net = spiking_resnet.spiking_resnet18(
         pretrained=True,
