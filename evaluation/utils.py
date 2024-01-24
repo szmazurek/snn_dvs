@@ -21,15 +21,47 @@ def unsqueeze_dim_if_missing(input_tensor: torch.Tensor) -> torch.Tensor:
     return input_tensor
 
 
-def train_val_dataset(dataset, val_split=0.3):
-    train_idx, val_idx = train_test_split(
-        list(range(len(dataset))), test_size=val_split
+def train_val_test_split_single_labels(
+    full_temporal_dataset, val_size, test_size, seed
+):
+    normal_labels = np.array(full_temporal_dataset.all_labels)
+    data_indices = np.array(list(range(len(full_temporal_dataset))))
+
+    neg_count, pos_count = torch.unique(
+        torch.from_numpy(normal_labels), return_counts=True
+    )[1]
+    pos_weight = neg_count / pos_count
+
+    train_idx, test_idx = train_test_split(
+        data_indices,
+        test_size=test_size,
+        random_state=seed,
+        stratify=normal_labels,
     )
-    _datasets = {
-        "train": Subset(dataset, train_idx),
-        "val": Subset(dataset, val_idx),
-    }
-    return _datasets
+    test_dataset = Subset(full_temporal_dataset, test_idx)
+    new_train_indices = data_indices[train_idx]
+    new_normal_labels = normal_labels[train_idx]
+    new_train_indices_ordered = np.array(list(range(len(new_train_indices))))
+
+    train_new_idx, val_idx = train_test_split(
+        new_train_indices_ordered,
+        test_size=val_size,
+        random_state=seed,
+        stratify=new_normal_labels,
+    )
+    train_indices = new_train_indices[train_new_idx]
+    val_indices = new_train_indices[val_idx]
+    train_dataset = Subset(full_temporal_dataset, train_indices)
+    val_dataset = Subset(full_temporal_dataset, val_indices)
+    for ind in train_indices:
+        if ind in val_indices:
+            print("Leak into the val set")
+        if ind in test_idx:
+            print("Leak into test set")
+        if ind not in data_indices:
+            print("Sth is wrong")
+
+    return train_dataset, val_dataset, test_dataset, pos_weight
 
 
 def assign_label(tensor: torch.Tensor) -> float:

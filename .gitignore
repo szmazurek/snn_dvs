@@ -7,3 +7,4 @@ saved*
 temp_chkpt*
 *env/
 results/
+count_classes.py

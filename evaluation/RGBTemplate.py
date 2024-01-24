@@ -7,11 +7,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 from argparse import ArgumentParser
 from torch.utils.data import DataLoader
-from utils import train_val_dataset
+from utils import train_val_test_split_single_labels
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from models import Resnet18, Resnet18_DVS_rgb, Resnet18_DVS
-from data_loaders import RGBDataset, DVSDatasetAsRGB
-from spikingjelly.activation_based import functional
+from data_loaders import (
+    RGBDataset,
+    DVSDatasetAsRGB,
+    DVSDatasetRepeated,
+    RGBDatasetRepeated,
+)
+from spikingjelly.activation_based import functional, neuron
 from torchmetrics import Accuracy, F1Score, AUROC, Recall, Specificity
 from torch.utils.data import Subset
 from utils import EarlyStopping
@@ -91,9 +96,6 @@ def main_kfold(args):
         optimizer = torch.optim.AdamW(
             net.parameters(), lr=args.lr, weight_decay=args.weight_decay
         )
-
-        # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)
-        max_f1 = 0.0
 
         pos_weight_tensor = torch.full([1], pos_weight)
         loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor).to(device)
@@ -213,57 +215,56 @@ def snn_loop(args):
     checkpoint_folder_path = args.checkpoint_folder_path
     checkpoint_file_save = args.checkpoint_file_save
     if args.dvs_mode:
-        full_dataset = DVSDatasetAsRGB(
-            args.dataset_path, target_size=(args.img_height, args.img_width)
+        # full_dataset = DVSDatasetAsRGB(
+        #     args.dataset_path, target_size=(args.img_height, args.img_width)
+        # )
+        full_dataset = DVSDatasetRepeated(
+            args.dataset_path,
+            target_size=(args.img_height, args.img_width),
+            sample_len=args.n_sample_repeats,
         )
         net = Resnet18_DVS()
-
     else:
-        full_dataset = RGBDataset(
-            args.dataset_path, target_size=(args.img_height, args.img_width)
+        full_dataset = RGBDatasetRepeated(
+            args.dataset_path,
+            target_size=(args.img_height, args.img_width),
+            sample_len=args.n_sample_repeats,
         )
         net = Resnet18_DVS_rgb()
-    labs = torch.tensor(full_dataset.all_labels)
-
-    neg_count, pos_count = torch.unique(labs, return_counts=True)[1]
-    pos_weight = neg_count / pos_count
-    labels = full_dataset.all_labels
-    data_indices = np.arange(len(labels))
-    train_idx, test_idx = train_test_split(
-        data_indices,
-        test_size=args.test_size,
-        stratify=labels,
-        random_state=args.seed,
+    (
+        train_dataset,
+        val_dataset,
+        test_dataset,
+        pos_weight,
+    ) = train_val_test_split_single_labels(
+        full_dataset, args.val_size, args.test_size, args.seed
     )
-    train_dataset = Subset(full_dataset, train_idx)
-    test_dataset = Subset(full_dataset, test_idx)
-    train_val_ds = train_val_dataset(train_dataset, val_split=args.val_size)
     print(f"Dataset sizes")
-    print(f"Train {len(train_val_ds['train'])}")
-    print(f"Val {len(train_val_ds['val'])}")
-    print(f"Test {len(test_dataset)}")
 
+    print(f"Train {len(train_dataset)}")
+    print(f"Val {len(val_dataset)}")
+    print(f"Test {len(test_dataset)}")
     train_data_loader = DataLoader(
-        train_val_ds["train"],
+        train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=6,
         pin_memory=True,
-        prefetch_factor=3,
+        prefetch_factor=5,
     )
     val_data_loader = DataLoader(
-        train_val_ds["val"],
+        val_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=4,
-        prefetch_factor=1,
+        num_workers=6,
+        prefetch_factor=5,
         pin_memory=True,
     )
     test_data_loader = DataLoader(
         test_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=2,
         prefetch_factor=1,
         pin_memory=True,
     )
@@ -288,7 +289,8 @@ def snn_loop(args):
     early_stopping = EarlyStopping(
         patience=8, delta=0.01, path=f"temp_chkpt/{wandb.run.id}.pt"
     )
-    functional.set_step_mode(net, "s")
+    functional.set_step_mode(net, "m")
+    # functional.set_backend(net, "cupy", instance=neuron.LIFNode)
     for epoch in range(0, epochs):
         net.train()
         train_loss = 0
@@ -297,8 +299,9 @@ def snn_loop(args):
         for i, (img_train, label_train) in enumerate(train_data_loader):
             optimizer.zero_grad()
             label_train = label_train.to(device)
-            img_train = img_train.to(device).float()
-            out_fr_train = net(img_train).squeeze()
+            img_train = img_train.permute(1, 0, 2, 3, 4).to(device).float()
+            print(img_train.shape)
+            out_fr_train = net(img_train).squeeze().mean(0)
             pred_list_train = torch.cat(
                 (pred_list_train, out_fr_train.detach()), dim=0
             )
@@ -329,8 +332,8 @@ def snn_loop(args):
         with torch.no_grad():
             for n, (img_val, label_val) in enumerate(val_data_loader):
                 label_val = label_val.to(device)
-                img_val = img_val.to(device).float()
-                out_fr_val = net(img_val).squeeze()
+                img_val = img_val.permute(1, 0, 2, 3, 4).to(device).float()
+                out_fr_val = net(img_val).squeeze().mean(0)
                 pred_list_val = torch.cat(
                     (pred_list_val, out_fr_val.detach()), dim=0
                 )
@@ -374,8 +377,9 @@ def snn_loop(args):
     with torch.no_grad():
         for n, (img_test, label_test) in enumerate(test_data_loader):
             label_test = label_test.to(device)
-            img_test = img_test.to(device).float()
-            out_fr_test = net(img_test).squeeze()
+            img_test = img_test.permute(1, 0, 2, 3, 4).to(device).float()
+            out_fr_test = net(img_test).squeeze().mean(0)
+
             pred_list_test = torch.cat(
                 (pred_list_test, out_fr_test.detach()), dim=0
             )
@@ -411,54 +415,49 @@ def normal_training(args):
         full_dataset = DVSDatasetAsRGB(
             args.dataset_path, target_size=(args.img_height, args.img_width)
         )
+
     else:
         full_dataset = RGBDataset(
             args.dataset_path, target_size=(args.img_height, args.img_width)
         )
-    labs = torch.tensor(full_dataset.all_labels)
-
-    neg_count, pos_count = torch.unique(labs, return_counts=True)[1]
-    pos_weight = neg_count / pos_count
-    labels = full_dataset.all_labels
-    data_indices = np.arange(len(labels))
-    train_idx, test_idx = train_test_split(
-        data_indices,
-        test_size=args.test_size,
-        stratify=labels,
-        random_state=args.seed,
+    (
+        train_dataset,
+        val_dataset,
+        test_dataset,
+        pos_weight,
+    ) = train_val_test_split_single_labels(
+        full_dataset, args.val_size, args.test_size, args.seed
     )
-    train_dataset = Subset(full_dataset, train_idx)
-    test_dataset = Subset(full_dataset, test_idx)
-    train_val_ds = train_val_dataset(train_dataset, val_split=args.val_size)
     print(f"Dataset sizes")
-    print(f"Train {len(train_val_ds['train'])}")
-    print(f"Val {len(train_val_ds['val'])}")
-    print(f"Test {len(test_dataset)}")
 
+    print(f"Train {len(train_dataset)}")
+    print(f"Val {len(val_dataset)}")
+    print(f"Test {len(test_dataset)}")
     train_data_loader = DataLoader(
-        train_val_ds["train"],
+        train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=6,
         pin_memory=True,
-        prefetch_factor=3,
+        prefetch_factor=5,
     )
     val_data_loader = DataLoader(
-        train_val_ds["val"],
+        val_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=4,
-        prefetch_factor=1,
+        num_workers=6,
+        prefetch_factor=5,
         pin_memory=True,
     )
     test_data_loader = DataLoader(
         test_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=2,
         prefetch_factor=1,
         pin_memory=True,
     )
+
     net = Resnet18(args.dvs_mode)
     net.to(device)
     optimizer = torch.optim.AdamW(
@@ -607,6 +606,11 @@ if __name__ == "__main__":
     parser.add_argument("--dvs_mode", action="store_true", default=False)
     parser.add_argument(
         "--checkpoint_folder_path", type=str, default="checkpoint_path"
+    )
+    parser.add_argument(
+        "--n_sample_repeats",
+        type=int,
+        help="Size of temporal dimension for SNN training (repetitions of the same frame)",
     )
     parser.add_argument("--img_height", type=int, default=600)
     parser.add_argument("--img_width", type=int, default=1600)

@@ -114,13 +114,13 @@ class DVSDatasetAsRGB(Dataset):
         return image, label
 
 
-class DVSDatasetRepeated(Dataset):
-    """Abstraction representing a DVS based dataset, where every sample
-    is artificially transformed into timeseries via repeating one
-    frame time_dim times.
-    """
-
-    def __init__(self, target_dir: str, time_dim: int = 32) -> None:
+class RGBDatasetRepeated(Dataset):
+    def __init__(
+        self,
+        target_dir: str,
+        sample_len: int = 32,
+        target_size: Tuple[int, int] = (600, 1600),
+    ) -> None:
         self.all_folders = [
             os.path.join(target_dir, directory)
             for directory in os.listdir(target_dir)
@@ -140,10 +140,69 @@ class DVSDatasetRepeated(Dataset):
             int(os.path.splitext(os.path.basename(file_path))[0].split("-")[1])
             for file_path in self.all_files
         ]
-        self.time_dim = time_dim
+        self.time_dim = sample_len
+
         self.transform = transforms.Compose(
             [
-                transforms.Resize((150, 400), interpolation=Image.NEAREST),
+                transforms.Resize(target_size),
+                transforms.PILToTensor(),
+                transforms.ConvertImageDtype(torch.float),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+
+    def load_image(self, image) -> torch.Tensor:
+        img = Image.open(image)
+        return self.transform(img)
+
+    def __len__(self) -> int:
+        return len(self.all_files)
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        file_path = self.all_files[index]
+        image = self.load_image(file_path).repeat(self.time_dim, 1, 1, 1)
+        label = torch.tensor(self.all_labels[index])
+
+        return image, label
+
+
+class DVSDatasetRepeated(Dataset):
+    """Abstraction representing a DVS based dataset, where every sample
+    is artificially transformed into timeseries via repeating one
+    frame time_dim times.
+    """
+
+    def __init__(
+        self,
+        target_dir: str,
+        sample_len: int = 32,
+        target_size: Tuple[int, int] = (600, 1600),
+    ) -> None:
+        self.all_folders = [
+            os.path.join(target_dir, directory)
+            for directory in os.listdir(target_dir)
+        ]
+        all_files_png = [
+            glob.glob(os.path.join(folders, "*.png"))
+            for folders in self.all_folders
+        ]
+        all_files_jpg = [
+            glob.glob(os.path.join(folders, "*.jpg"))
+            for folders in self.all_folders
+        ]
+        self.all_files = all_files_png + all_files_jpg
+        self.all_files = [e for sub in self.all_files for e in sub]
+
+        self.all_labels = [
+            int(os.path.splitext(os.path.basename(file_path))[0].split("-")[1])
+            for file_path in self.all_files
+        ]
+        self.time_dim = sample_len
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize(target_size, interpolation=Image.NEAREST),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
             ]
