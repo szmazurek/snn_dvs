@@ -9,7 +9,6 @@ from typing import Tuple, List
 import re
 from operator import itemgetter
 from itertools import groupby
-from abc import abstractmethod
 
 
 class RGBDataset(Dataset):

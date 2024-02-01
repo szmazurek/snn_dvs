@@ -230,3 +230,28 @@ class TemporalSampleDataset(BaseDataset):
         ).unsqueeze(1)
         label = torch.tensor(self.all_labels[index])
         return window, label
+
+
+class RepeatedSampleDataset(SingleSampleDataset):
+    """A class that loads a single sample from a video and repeats it
+    multiple times.
+    """
+
+    def __init__(
+        self,
+        folder_list: List[str],
+        target_size: Tuple[int, int] = (600, 1600),
+        dvs_mode: bool = False,
+        repeat: int = 1,
+    ) -> None:
+        super().__init__(folder_list, target_size, dvs_mode)
+        self.repeat = repeat
+
+    def __len__(self) -> int:
+        return len(self.all_files)
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        file_path = self.all_files[index]
+        image = self.load_image(file_path).repeat(self.repeat, 1, 1, 1)
+        label = torch.tensor(self.all_labels[index])
+        return image, label
