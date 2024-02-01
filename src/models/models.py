@@ -351,18 +351,31 @@ def Resnet18_DVS(neuron_model: neuron.BaseNode = neuron.LIFNode):
     return net
 
 
-def Resnet18_DVS_rgb():
+def Resnet18_spiking(
+    dvs_mode=False,
+    neuron_model: neuron.BaseNode = neuron.LIFNode,
+    surrogate_function: surrogate.SurrogateFunctionBase = surrogate.Sigmoid(),
+) -> nn.Module:
     net = spiking_resnet.spiking_resnet18(
         pretrained=True,
-        spiking_neuron=neuron.LIFNode,
-        surrogate_function=surrogate.Sigmoid(),
+        spiking_neuron=neuron_model,
+        surrogate_function=surrogate_function,
         detach_reset=True,
     )
+    if dvs_mode:
+        net.conv1 = layer.Conv2d(
+            1,
+            64,
+            kernel_size=(7, 7),
+            stride=(2, 2),
+            padding=(3, 3),
+            bias=False,
+        )
     net.fc = layer.Linear(512, 1)
     return net
 
 
-def Resnet18(dvs_mode=False):
+def Resnet18(dvs_mode=False) -> nn.Module:
     net = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
     net.fc = nn.Linear(512, 1)
     if dvs_mode:
@@ -377,7 +390,7 @@ def Resnet18(dvs_mode=False):
     return net
 
 
-def slow_r50(dvs_mode=False):
+def slow_r50(dvs_mode=False) -> nn.Module:
     net = torch.hub.load(
         "facebookresearch/pytorchvideo", "slow_r50", pretrained=True
     )
