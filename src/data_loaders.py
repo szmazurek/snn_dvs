@@ -9,6 +9,7 @@ from typing import Tuple, List
 import re
 from operator import itemgetter
 from itertools import groupby
+from abc import abstractmethod
 
 
 class RGBDataset(Dataset):
@@ -392,7 +393,9 @@ class DVSDatasetProperRepeated(DVSDatasetProper):
                 self.load_image(image)  # .repeat(self.n_repeats, 1, 1, 1)
                 for image in file_path
             ]
-        ).unsqueeze(1)  # .repeat(self.n_repeats, 1, 1, 1)
+        ).unsqueeze(
+            1
+        )  # .repeat(self.n_repeats, 1, 1, 1)
         label = torch.tensor(self.all_labels[index])
         return window, label
 

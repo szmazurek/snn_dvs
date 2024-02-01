@@ -14,7 +14,7 @@ from utils import (
     unsqueeze_dim_if_missing,
     perform_forward_pass_on_temporal_batch,
 )
-from typing import List, Tuple, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Callable
 from warnings import warn
 
 
