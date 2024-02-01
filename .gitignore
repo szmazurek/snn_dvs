@@ -6,5 +6,6 @@ output*
 saved*
 temp_chkpt*
 *env/
-results/
+*results*/
 count_classes.py
+*logs

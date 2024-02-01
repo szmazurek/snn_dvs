@@ -1,23 +1,22 @@
 import torch
-from spikingjelly.activation_based import functional
-from models import Resnet18_DVS, Resnet18_DVS_rgb
 from utils import (
     unsqueeze_dim_if_missing,
+    perform_forward_pass_on_temporal_batch,
 )
 from torchmetrics import AUROC, Accuracy, F1Score
 from matplotlib import pyplot as plt
 import os
 import json
+from models import Resnet18
 import logging
 from argparse import ArgumentParser
 
-# Configure the logging
 logging.basicConfig(
-    filename="logs/log_snn.log",
+    filename="logs/voting_resnet.log",
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    filemode="a",
     force=True,
+    filemode="a",
 )
 
 
@@ -69,12 +68,11 @@ def eval_threshold(args):
         f"./saved_models/{args.exp_name}.pt",
         map_location=device,
     )
-    model = Resnet18_DVS()
+    net = Resnet18(args.dvs_mode)
     model.load_state_dict(state_dict=state_dict)
     model = model.to(device)
 
     model.eval()
-    functional.set_step_mode(model, "m")
 
     loader = torch.utils.data.DataLoader(
         subset, batch_size=args.batch_size, shuffle=False, num_workers=4
@@ -92,15 +90,14 @@ def eval_threshold(args):
         acc = Accuracy("binary", threshold=threshold).to(device)
         with torch.no_grad():
             for n, (img_test, label_test) in enumerate(loader):
-                img_test = img_test.permute(1, 0, 2, 3, 4).float().to(device)
+                img_test = img_test.permute(0, 2, 1, 3, 4).float().to(device)
                 label_test = label_test.to(device)
-                logits = model(img_test).squeeze(2).mean(0)
+                logits = model(img_test).squeeze()
                 logits = unsqueeze_dim_if_missing(logits)
                 pred_list_test = torch.cat([pred_list_test, logits], dim=0)
                 label_list_test = torch.cat(
                     [label_list_test, label_test], dim=0
                 )
-                functional.reset_net(model)
 
             auroc_res = auroc(pred_list_test, label_list_test).item()
             f1_res = f1(pred_list_test, label_list_test).item()
@@ -113,6 +110,7 @@ def eval_threshold(args):
                 "f1": f1_res,
                 "acc": acc_res,
             }
+            print(f"Threshold {threshold} complete")
 
     with open(
         os.path.join(exp_results_save_path, "threshold_results.json"), "w"
@@ -142,28 +140,25 @@ def eval_threshold(args):
 
 
 def eval_horizon(args):
+    logging.info(f"Evaluating experiment {args.exp_name}")
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     exp_results_save_path = os.path.join(args.save_dir, args.exp_name)
     if not os.path.exists(exp_results_save_path):
         os.makedirs(exp_results_save_path)
     subset = torch.load(
-        f"./{args.root_data_dir}/datasets/{args.exp_name}.pt",
+        f"{args.root_data_dir}/datasets/{args.exp_name}.pt",
         map_location=device,
     )
 
     state_dict = torch.load(
-        f"./{args.root_data_dir}/models/{args.exp_name}.pt",
+        f"{args.root_data_dir}/models/{args.exp_name}.pt",
         map_location=device,
     )
-    if args.dvs_mode:
-        model = Resnet18_DVS()
-    else:
-        model = Resnet18_DVS_rgb()
+    model = Resnet18(args.dvs_mode)
     model.load_state_dict(state_dict=state_dict)
     model = model.to(device)
     model.eval()
-
-    functional.set_step_mode(model, "m")
 
     loader = torch.utils.data.DataLoader(
         subset,
@@ -181,24 +176,27 @@ def eval_horizon(args):
         extended_labels.append(
             generate_extended_labels_from_sample(frame_filename)
         )
-
     dataloader_len = len(loader)
     loss_fn = torch.nn.BCEWithLogitsLoss(reduction="none").to(device)
     loss_values = torch.Tensor().to(device)
     correct_preds_dict = {}
     total_preds_for_extended_label_dict = {}
+    logging.info("Init complete, starting inference")
     with torch.no_grad():
         for n, (img_test, label_test) in enumerate(loader):
             extended_labels_batch = extended_labels[
                 n * args.batch_size : (n + 1) * args.batch_size
             ]
-            img_test = img_test.permute(1, 0, 2, 3, 4).float().to(device)
+            img_test = img_test.to(device).float()
             label_test = label_test.to(device)
-            preds = model(img_test).squeeze(2).mean(0)
+            preds = (
+                (perform_forward_pass_on_temporal_batch(model, img_test))
+                .squeeze(2)
+                .mean(1)
+            )
             loss = loss_fn(preds, label_test.float())
             loss_values = torch.cat((loss_values, loss), dim=0)
             logits = torch.sigmoid(preds).cpu()
-            functional.reset_net(model)
             pred = torch.where(
                 logits > args.predictive_horizon_threshold, 1, 0
             )
@@ -225,6 +223,7 @@ def eval_horizon(args):
         "w",
     ) as f:
         json.dump(loss_values.tolist(), f)
+
     with open(
         os.path.join(
             exp_results_save_path,
@@ -250,7 +249,6 @@ def eval_horizon(args):
 
     plt.bar(labels, acc)
     plt.xlabel("Extended label")
-    # plt.ylim([0, 1.1])
     plt.ylabel("Accuracy")
     plt.savefig(
         os.path.join(
@@ -264,12 +262,13 @@ def eval_horizon(args):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--exp_name", type=str)
-    parser.add_argument("--root_data_dir", type=str)
     parser.add_argument("--save_dir", type=str, default="results")
+    parser.add_argument("--root_data_dir", type=str)
+
     parser.add_argument("--eval_horizon", action="store_true")
     parser.add_argument("--eval_threshold", action="store_true")
-    parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--dvs_mode", action="store_true")
+    parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument(
         "--thresholds_to_evaluate",
         nargs="+",

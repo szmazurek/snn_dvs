@@ -7,32 +7,47 @@ from matplotlib import pyplot as plt
 import os
 import json
 from models import slow_r50
-
+import logging
 from argparse import ArgumentParser
+
+logging.basicConfig(
+    filename="logs/log_slowr50.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    force=True,
+    filemode="a",
+)
+
 
 def assign_label(tensor: torch.Tensor) -> int:
     """Detect if in the given tensor of numbers there occurs a situation at any place when the 1 is followed by 0.
     If yes, assigns label 100, otherwise sum of the numbers in tensor.
     """
     assert tensor.dim() == 1, "Tensor must be 1-dimensional"
-    assert torch.all(tensor == 0 | (tensor == 1)), "Tensor must contain only 0s or 1s"
+    assert torch.all(
+        tensor == 0 | (tensor == 1)
+    ), "Tensor must contain only 0s or 1s"
     nonzero = tensor.nonzero()
     if nonzero.numel() == 0:
-        return 0 # if negative sample, return 0
-    if len(tensor) -1 != nonzero[-1]:
+        return 0  # if negative sample, return 0
+    if len(tensor) - 1 != nonzero[-1]:
         # return -1 # if ones occur, but there exists any 0 after them, return 1
         return -tensor.sum().item()
     recursive_difference_tensor = torch.diff(nonzero, dim=0)
     if torch.any(recursive_difference_tensor != 1):
-        return 100 # if ones occur, but there exists any 0 between them, return 1
+        return (
+            100  # if ones occur, but there exists any 0 between them, return 1
+        )
     return tensor.sum().item()
 
 
 def generate_extended_labels_from_sample(set_of_frame_filenames):
-    per_frame_labels = torch.tensor([
-        int(os.path.basename(frame).split(".")[0].split("-")[1])
-        for frame in set_of_frame_filenames
-    ])
+    per_frame_labels = torch.tensor(
+        [
+            int(os.path.basename(frame).split(".")[0].split("-")[1])
+            for frame in set_of_frame_filenames
+        ]
+    )
     per_frame_label = assign_label(per_frame_labels)
     # per_frame_label = sum(per_frame_labels)
     return per_frame_label
@@ -124,17 +139,19 @@ def eval_threshold(args):
 
 
 def eval_horizon(args):
+    logging.info(f"Evaluating experiment {args.exp_name}")
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     exp_results_save_path = os.path.join(args.save_dir, args.exp_name)
     if not os.path.exists(exp_results_save_path):
         os.makedirs(exp_results_save_path)
     subset = torch.load(
-        f"./saved_datasets/{args.exp_name}.pt",
+        f"{args.root_data_dir}/datasets/{args.exp_name}.pt",
         map_location=device,
     )
 
     state_dict = torch.load(
-        f"./saved_models/{args.exp_name}.pt",
+        f"{args.root_data_dir}/models/{args.exp_name}.pt",
         map_location=device,
     )
     model = slow_r50(args.dvs_mode)
@@ -163,6 +180,7 @@ def eval_horizon(args):
     loss_values = torch.Tensor().to(device)
     correct_preds_dict = {}
     total_preds_for_extended_label_dict = {}
+    logging.info("Init complete, starting inference")
     with torch.no_grad():
         for n, (img_test, label_test) in enumerate(loader):
             extended_labels_batch = extended_labels[
@@ -172,7 +190,7 @@ def eval_horizon(args):
             label_test = label_test.to(device)
             preds = model(img_test).squeeze()
             loss = loss_fn(preds, label_test.float())
-            loss_values = torch.cat((loss_values,loss),dim=0)
+            loss_values = torch.cat((loss_values, loss), dim=0)
             logits = torch.sigmoid(preds).cpu()
             pred = torch.where(
                 logits > args.predictive_horizon_threshold, 1, 0
@@ -190,14 +208,16 @@ def eval_horizon(args):
                         correct_preds_dict[extended_label] = 1
                     else:
                         correct_preds_dict[extended_label] += 1
-            print(f"Processed {n+1} batches out of {dataloader_len}")
+            logging.info(f"Processed {n+1} batches out of {dataloader_len}")
 
     with open(
         os.path.join(
-            exp_results_save_path,f"horizon_{args.predictive_horizon_threshold}_losses.json"
-        ), "w"
+            exp_results_save_path,
+            f"horizon_{args.predictive_horizon_threshold}_losses.json",
+        ),
+        "w",
     ) as f:
-        json.dump(loss_values.tolist(),f)
+        json.dump(loss_values.tolist(), f)
 
     with open(
         os.path.join(
@@ -238,6 +258,8 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--exp_name", type=str)
     parser.add_argument("--save_dir", type=str, default="results")
+    parser.add_argument("--root_data_dir", type=str)
+
     parser.add_argument("--eval_horizon", action="store_true")
     parser.add_argument("--eval_threshold", action="store_true")
     parser.add_argument("--dvs_mode", action="store_true")

@@ -10,10 +10,6 @@ import re
 from operator import itemgetter
 from itertools import groupby
 
-from torchvision.transforms._transforms_video import NormalizeVideo
-
-from pytorchvideo.transforms import ShortSideScale
-
 
 class RGBDataset(Dataset):
     def __init__(
@@ -370,6 +366,37 @@ class DVSDatasetProper(Dataset):
         return window, label
 
 
+class DVSDatasetProperRepeated(DVSDatasetProper):
+    """A class that loads DVS frames as a temporal sequence of images,
+    but every frame is repeated n_repeats times.
+    """
+
+    def __init__(
+        self,
+        target_dir: str,
+        target_size: Tuple[int, int] = (600, 1600),
+        sample_len: int = 4,
+        overlap: int = 0,
+        per_frame_label_mode: bool = False,
+        n_repeats: int = 1,
+    ) -> None:
+        super().__init__(
+            target_dir, target_size, sample_len, overlap, per_frame_label_mode
+        )
+        self.n_repeats = n_repeats
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        file_path = self.all_samples[index]
+        window = torch.cat(
+            [
+                self.load_image(image)  # .repeat(self.n_repeats, 1, 1, 1)
+                for image in file_path
+            ]
+        ).unsqueeze(1)  # .repeat(self.n_repeats, 1, 1, 1)
+        label = torch.tensor(self.all_labels[index])
+        return window, label
+
+
 class RGBDatasetTemporal(DVSDatasetProper):
     """A class that loads RGB frames as a temporal sequence of images.
     Only transforms are overriden (changed interpolation and normalization).
@@ -400,6 +427,37 @@ class RGBDatasetTemporal(DVSDatasetProper):
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         file_path = self.all_samples[index]
         window = torch.stack([self.load_image(image) for image in file_path])
+        label = torch.tensor(self.all_labels[index])
+        return window, label
+
+
+class RGBDatasetTemporalRepeated(RGBDatasetTemporal):
+    """A class that loads RGB frames as a temporal sequence of images,
+    but every frame is repeated n_repeats times.
+    """
+
+    def __init__(
+        self,
+        target_dir: str,
+        target_size: Tuple[int, int] = (600, 1600),
+        sample_len: int = 4,
+        overlap: int = 0,
+        per_frame_label_mode: bool = False,
+        n_repeats: int = 1,
+    ) -> None:
+        super().__init__(
+            target_dir, target_size, sample_len, overlap, per_frame_label_mode
+        )
+        self.n_repeats = n_repeats
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        file_path = self.all_samples[index]
+        window = torch.cat(
+            [
+                self.load_image(image).repeat(self.n_repeats, 1, 1, 1)
+                for image in file_path
+            ]
+        ).unsqueeze(1)
         label = torch.tensor(self.all_labels[index])
         return window, label
 

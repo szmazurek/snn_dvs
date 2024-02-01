@@ -7,15 +7,13 @@ from torch.utils.data import DataLoader
 from utils import (
     train_val_test_split,
     unsqueeze_dim_if_missing,
-    perform_forward_pass_on_temporal_batch,
     set_random_seeds,
 )
-from models import Resnet18
-from data_loaders import (
-    RGBDatasetTemporal,
-    DVSDatasetTemporalforNonTemporalNet,
-)
+from models import Resnet18_DVS, Resnet18_DVS_rgb
+from data_loaders import RGBDatasetTemporalRepeated, DVSDatasetProperRepeated
 from torchmetrics import Accuracy, F1Score, AUROC
+from spikingjelly.activation_based import functional
+import gc
 from utils import EarlyStopping
 
 api_key_file = open("./wandb_api_key.txt", "r")
@@ -24,25 +22,38 @@ api_key_file.close()
 os.environ["WANDB_API_KEY"] = API_KEY
 
 
-def temporal_rgb_training(args):
+def normal_training(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     checkpoint_folder_path = args.checkpoint_folder_path
     checkpoint_file_save = args.checkpoint_file_save
+    N_ACCUMULATION_STEPS = args.grad_accumulation_steps
     if args.dvs_mode:
-        full_dataset = DVSDatasetTemporalforNonTemporalNet(
-            target_dir=args.dataset_path,
+        full_dataset = DVSDatasetProperRepeated(
+            args.dataset_path,
             target_size=(args.img_height, args.img_width),
             sample_len=args.sample_timestep,
             overlap=args.sample_overlap,
+            per_frame_label_mode=args.per_sample_label_model,
+            n_repeats=args.n_repeats,
         )
+        net = Resnet18_DVS()
+
     else:
-        full_dataset = RGBDatasetTemporal(
-            target_dir=args.dataset_path,
+        full_dataset = RGBDatasetTemporalRepeated(
+            args.dataset_path,
             target_size=(args.img_height, args.img_width),
             sample_len=args.sample_timestep,
             overlap=args.sample_overlap,
+            per_frame_label_mode=args.per_sample_label_model,
+            n_repeats=args.n_repeats,
         )
+        net = Resnet18_DVS_rgb()
+
+    if args.resume_training_model_path is not None:
+        state_dict = torch.load(args.resume_training_model_path)
+        net.load_state_dict(state_dict)
+        print(f"Restoring model from {args.resume_training_model_path}")
+
     (
         train_dataset,
         val_dataset,
@@ -51,6 +62,11 @@ def temporal_rgb_training(args):
     ) = train_val_test_split(
         full_dataset, args.val_size, args.test_size, args.seed
     )
+    print(f"Dataset sizes")
+
+    print(f"Train {len(train_dataset)}")
+    print(f"Val {len(val_dataset)}")
+    print(f"Test {len(test_dataset)}")
     train_data_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -71,16 +87,11 @@ def temporal_rgb_training(args):
         test_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=2,
         prefetch_factor=1,
         pin_memory=True,
     )
-    net = Resnet18(args.dvs_mode)
-    if args.resume_training_model_path is not None:
-        state_dict = torch.load(args.resume_training_model_path)
-        net.load_state_dict(state_dict)
-        print(f"Restoring model from {args.resume_training_model_path}")
-    net.to(device)
+    functional.set_step_mode(net, "m")
     optimizer = torch.optim.AdamW(
         net.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
@@ -101,22 +112,27 @@ def temporal_rgb_training(args):
     early_stopping = EarlyStopping(
         patience=8, delta=0.01, path=f"temp_chkpt/{run_id}.pt"
     )
+    net = net.to(device)
     for epoch in range(0, epochs):
         net.train()
         train_loss = 0
         label_list_train = torch.Tensor().to(device)
         pred_list_train = torch.Tensor().to(device)
         for i, (img_train, label_train) in enumerate(train_data_loader):
-            optimizer.zero_grad()
-            label_train = label_train.to(device)
-            img_train = img_train.to(device).float()
+            # label_val = label_val.permute(1, 0, 2).squeeze(2)
+            if i == 0:
+                print(img_train.shape)
 
-            out_fr_train = (
-                (perform_forward_pass_on_temporal_batch(net, img_train))
-                .squeeze(2)
-                .mean(1)
+            label_train = label_train.to(device)
+            img_train = img_train.repeat(1, args.n_repeats, 1, 1, 1).permute(
+                1, 0, 2, 3, 4
             )
 
+            img_train = img_train.to(device).float()
+            out_fr_train = (
+                net(img_train).squeeze().mean(0)
+            )  # for standard approach
+            # out_fr_train = net(img_train).squeeze(1)
             out_fr_train = unsqueeze_dim_if_missing(out_fr_train)
             pred_list_train = torch.cat(
                 (pred_list_train, out_fr_train.detach()), dim=0
@@ -125,48 +141,64 @@ def temporal_rgb_training(args):
                 (label_list_train, label_train), dim=0
             )
 
-            loss_train = loss_fn(out_fr_train, label_train.float())
+            loss_train = (
+                loss_fn(out_fr_train, label_train.float())
+                / N_ACCUMULATION_STEPS
+            )
             train_loss += loss_train.detach().item()
             loss_train.backward()
-            optimizer.step()
-            if i % 10 == 0 and i > 0:
+            if ((i + 1) % N_ACCUMULATION_STEPS == 0) or (
+                i + 1 == len(train_data_loader)
+            ):
+                optimizer.step()
+                optimizer.zero_grad()
+                print(f"Made param update after batch {i}")
+            functional.reset_net(net)
+            if i % 100 == 0 and i > 0:
                 print(f"Completed batch {i}")
 
         train_acc = accuracy_metric(pred_list_train, label_list_train)
         train_f1 = f1_metric(pred_list_train, label_list_train)
         train_auroc = auroc_metric(pred_list_train, label_list_train)
-        label_list_train = torch.Tensor().to(device)
-        pred_list_train = torch.Tensor().to(device)
+        del pred_list_train, label_list_train
+        gc.collect()
+
         print(f"Train loss {train_loss/(i+1)}")
         print(
             f"Train epoch {epoch}, acc {train_acc}, f1 {train_f1}, auroc {train_auroc}"
         )
+
         net.eval()
         val_loss = 0
         label_list_val = torch.Tensor().to(device)
         pred_list_val = torch.Tensor().to(device)
         with torch.no_grad():
             for n, (img_val, label_val) in enumerate(val_data_loader):
+                # label_val = label_val.permute(1, 0, 2).squeeze(2)
                 label_val = label_val.to(device)
-                img_val = img_val.to(device).float()
-                out_fr_val = (
-                    perform_forward_pass_on_temporal_batch(net, img_val)
-                    .squeeze(2)
-                    .mean(1)
+                img_val = img_val.repeat(1, args.n_repeats, 1, 1, 1).permute(
+                    1, 0, 2, 3, 4
                 )
+                img_val = img_val.to(device).float()
+                out_fr_val = net(img_val).squeeze().mean(0)
+                # out_fr_val = net(img_val).squeeze(1)
+
                 out_fr_val = unsqueeze_dim_if_missing(out_fr_val)
+
                 pred_list_val = torch.cat(
                     (pred_list_val, out_fr_val.detach()), dim=0
                 )
                 label_list_val = torch.cat((label_list_val, label_val), dim=0)
                 loss_val = loss_fn(out_fr_val, label_val.float())
                 val_loss += loss_val.detach().item()
+                functional.reset_net(net)
 
         val_acc = accuracy_metric(pred_list_val, label_list_val)
         val_f1 = f1_metric(pred_list_val, label_list_val)
         val_auroc = auroc_metric(pred_list_val, label_list_val)
-        label_list_val = torch.Tensor().to(device)
-        pred_list_val = torch.Tensor().to(device)
+        del pred_list_val, label_list_val
+
+        gc.collect()
         print(f"Val loss {val_loss/(n+1)}")
         print(
             f"Val epoch {epoch}, acc {val_acc}, f1 {val_f1}, auroc {val_auroc}"
@@ -196,13 +228,14 @@ def temporal_rgb_training(args):
     pred_list_test = torch.Tensor().to(device)
     with torch.no_grad():
         for n, (img_test, label_test) in enumerate(test_data_loader):
+            # label_test = label_test.permute(1, 0, 2).squeeze(2)
             label_test = label_test.to(device)
-            img_test = img_test.to(device).float()
-            out_fr_test = (
-                perform_forward_pass_on_temporal_batch(net, img_test)
-                .squeeze(2)
-                .mean(1)
+            img_test = img_test.repeat(1, args.n_repeats, 1, 1, 1).permute(
+                1, 0, 2, 3, 4
             )
+            img_test = img_test.to(device).float()
+            out_fr_test = net(img_test).squeeze().mean(0)
+            # out_fr_test = net(img_test).squeeze(1)
             out_fr_test = unsqueeze_dim_if_missing(out_fr_test)
             pred_list_test = torch.cat(
                 (pred_list_test, out_fr_test.detach()), dim=0
@@ -210,6 +243,7 @@ def temporal_rgb_training(args):
             label_list_test = torch.cat((label_list_test, label_test), dim=0)
             loss_test = loss_fn(out_fr_test, label_test.float())
             test_loss += loss_test.detach().item()
+            functional.reset_net(net)
 
     test_acc = accuracy_metric(pred_list_test, label_list_test)
     test_f1 = f1_metric(pred_list_test, label_list_test)
@@ -218,7 +252,6 @@ def temporal_rgb_training(args):
     print(
         f"Test epoch {epoch}, acc {test_acc}, f1 {test_f1}, auroc {test_auroc}"
     )
-
     if args.wandb:
         wandb.log(
             {
@@ -247,8 +280,6 @@ def temporal_rgb_training(args):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--dataset_path", type=str, default="dataset_path")
-    parser.add_argument("--kfold", action="store_true", default=False)
-    parser.add_argument("--n_folds", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=1024)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--lr", type=float, default=1e-4)
@@ -257,13 +288,12 @@ if __name__ == "__main__":
     parser.add_argument("--val_size", type=float, default=0.15)
     parser.add_argument("--sample_timestep", type=int, default=4)
     parser.add_argument("--sample_overlap", type=int, default=0)
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--per_sample_label_model", action="store_true", default=False
+    )
     parser.add_argument("--img_height", type=int, default=600)
     parser.add_argument("--img_width", type=int, default=1600)
-    parser.add_argument("--dvs_mode", action="store_true", default=False)
-    parser.add_argument(
-        "--save_final_model", action="store_true", default=False
-    )
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--checkpoint_folder_path", type=str, default="checkpoint_path"
     )
@@ -275,6 +305,12 @@ if __name__ == "__main__":
     parser.add_argument("--wandb_group", type=str, default="group_name")
     parser.add_argument("--wandb_exp_name", type=str, default="exp_name")
     parser.add_argument(
+        "--save_final_model", action="store_true", default=False
+    )
+    parser.add_argument("--grad_accumulation_steps", type=int, default=1)
+    parser.add_argument("--dvs_mode", action="store_true", default=False)
+    parser.add_argument("--n_repeats", type=int, default=3)
+    parser.add_argument(
         "--resume_training_model_path",
         type=str,
         default=None,
@@ -282,4 +318,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     set_random_seeds(args.seed)
-    temporal_rgb_training(args)
+    normal_training(args)

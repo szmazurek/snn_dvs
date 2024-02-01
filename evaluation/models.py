@@ -337,10 +337,10 @@ def Resnet18_DVS_voting():
     return net
 
 
-def Resnet18_DVS():
+def Resnet18_DVS(neuron_model: neuron.BaseNode = neuron.LIFNode):
     net = spiking_resnet.spiking_resnet18(
         pretrained=True,
-        spiking_neuron=neuron.LIFNode,
+        spiking_neuron=neuron_model,
         surrogate_function=surrogate.Sigmoid(),
         detach_reset=True,
     )

@@ -9,6 +9,7 @@ from utils import (
     unsqueeze_dim_if_missing,
     set_random_seeds,
 )
+from spikingjelly.activation_based import neuron
 from models import Resnet18_DVS, Resnet18_DVS_rgb
 from data_loaders import RGBDatasetTemporal, DVSDatasetProper
 from torchmetrics import Accuracy, F1Score, AUROC
@@ -22,11 +23,29 @@ api_key_file.close()
 os.environ["WANDB_API_KEY"] = API_KEY
 
 
+accepted_neuron_models = {
+    "lif": neuron.LIFNode,
+    "plif": neuron.ParametricLIFNode,
+    "eif": neuron.EIFNode,
+    "izhikevich": neuron.IzhikevichNode,
+    "klif": neuron.KLIFNode,
+    "liaf": neuron.LIAFNode,
+}
+
+# to test PSN models
+
+
 def normal_training(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint_folder_path = args.checkpoint_folder_path
     checkpoint_file_save = args.checkpoint_file_save
     N_ACCUMULATION_STEPS = args.grad_accumulation_steps
+    neuron_model = args.neuron_model.lower()
+    assert neuron_model in accepted_neuron_models.keys(), (
+        f"Neuron model {neuron_model} not supported. "
+        f"Supported models are {accepted_neuron_models.keys()}"
+    )
+    neuron_model = accepted_neuron_models[neuron_model]
     if args.dvs_mode:
         full_dataset = DVSDatasetProper(
             args.dataset_path,
@@ -90,6 +109,8 @@ def normal_training(args):
         pin_memory=True,
     )
     functional.set_step_mode(net, "m")
+    functional.set_backend(net, "cupy")
+
     optimizer = torch.optim.AdamW(
         net.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
@@ -300,6 +321,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--grad_accumulation_steps", type=int, default=1)
     parser.add_argument("--dvs_mode", action="store_true", default=False)
+    parser.add_argument("--neuron_model", type=str, default="lif")
     parser.add_argument(
         "--resume_training_model_path",
         type=str,
