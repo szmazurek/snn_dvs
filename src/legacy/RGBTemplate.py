@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from utils import train_val_test_split_single_labels
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from models import Resnet18, Resnet18_DVS_rgb, Resnet18_DVS
-from data_loaders import (
+from legacy.data_loaders import (
     RGBDataset,
     DVSDatasetAsRGB,
     DVSDatasetRepeated,

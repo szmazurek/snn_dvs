@@ -1,0 +1,42 @@
+seed : 42
+batch_size : 32
+epochs : 100
+lr : 0.001
+weight_decay : 0.1
+early_stopping_patience : 8
+
+# spiking params are optional, if not specified, default values will be used
+# models : resnet18, resnet18_spiking, slow_r50
+model : {
+  type : temporal, # or temporal, or single_step
+  name : resnet18_spiking,
+  spiking_params : {
+    neuron_model : LIF,
+    surrogate_function : sigmoid,
+    step_mode : multi_step,
+    backend : torch,
+  }
+}
+
+dataset : {
+  root_path : ./datasets/dataset_weather_dvs,
+  dvs_mode : True, # or False for RGB
+  type : repeated, # either temporal, repeated or single_step
+  img_width : 256,
+  img_height : 450,
+  evaluation_mode : standard, # or kfold
+  n_folds : 5, # only used if evaluation_mode is kfold
+  val_size : 0.15, # always used
+  test_size : 0.15, # only used if evaluation_mode is standard
+  timestep : 9, # only used if type is temporal
+  overlap : 8, # only used if type is temporal
+  repeats : 5, # only used if type is repeated
+}
+
+wandb : {
+  entity : mazurek,
+  project : dvs_final_exp,
+  group : new_framework
+}
+checkpoint_path : checkpoints_lightning
+dataset_save_dir : results_new_runs/datasets # save the test data for every fold (or entire run)

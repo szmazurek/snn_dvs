@@ -7,7 +7,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 from PIL import Image
 
-from typing import Tuple, List
+from typing import Tuple, List, Union
 from operator import itemgetter
 from itertools import groupby
 from abc import abstractmethod
@@ -19,6 +19,10 @@ class BaseDataset(Dataset):
         folder_list: List[str],
         target_size: Tuple[int, int] = (600, 1600),
         dvs_mode: bool = False,
+        repeats: Union[int, None] = None,
+        sample_len: Union[int, None] = None,
+        overlap: Union[int, None] = None,
+        per_frame_label_mode: Union[bool, None] = None,
     ) -> None:
         """Base class for all datasets. It takes a list of folders
         representing separate videos and returns a single sample from a video.
@@ -29,7 +33,7 @@ class BaseDataset(Dataset):
             dvs_mode (bool, optional): flag indicating if DVS data will be used.
         Used for choosing the proper transforms. Defaults to False.
         """
-        self.folder_list = folder_list
+
         self.target_size = target_size
         self.dvs_mode = dvs_mode
         all_files_png = [
@@ -43,7 +47,6 @@ class BaseDataset(Dataset):
         all_files = all_files_png + all_files_jpg
 
         self.all_files = [e for sub in all_files for e in sub]
-
         self.transform = self._get_transforms()
 
     @abstractmethod
@@ -128,6 +131,7 @@ class TemporalSampleDataset(BaseDataset):
         self.all_cilp_samples = self.create_windowed_samples(
             all_files_sorted, sample_len, overlap
         )
+        self.all_labels = self.create_labels()
 
     def create_labels(self):
         def create_window_labels(window: List[str]) -> List[int]:
@@ -154,7 +158,7 @@ class TemporalSampleDataset(BaseDataset):
             per_window_labels = [
                 int(max(window_labels)) for window_labels in per_frame_labels
             ]
-            self.all_labels = per_window_labels
+            return per_window_labels
         else:
             print("per_frame_label_mode is not implemented yet")
             raise NotImplementedError
@@ -242,16 +246,16 @@ class RepeatedSampleDataset(SingleSampleDataset):
         folder_list: List[str],
         target_size: Tuple[int, int] = (600, 1600),
         dvs_mode: bool = False,
-        repeat: int = 1,
+        repeats: int = 1,
     ) -> None:
         super().__init__(folder_list, target_size, dvs_mode)
-        self.repeat = repeat
+        self.repeats = repeats
 
     def __len__(self) -> int:
         return len(self.all_files)
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         file_path = self.all_files[index]
-        image = self.load_image(file_path).repeat(self.repeat, 1, 1, 1)
+        image = self.load_image(file_path).repeat(self.repeats, 1, 1, 1)
         label = torch.tensor(self.all_labels[index])
         return image, label

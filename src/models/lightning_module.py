@@ -9,7 +9,7 @@ from spikingjelly.activation_based import (
     functional,
     surrogate,
 )
-from models import slow_r50, Resnet18, Resnet18_spiking
+from .models import slow_r50, Resnet18, Resnet18_spiking
 from utils import (
     unsqueeze_dim_if_missing,
     perform_forward_pass_on_temporal_batch,
@@ -39,6 +39,7 @@ class LightningModuleNonTemporal(pl.LightningModule):
     }
     ACCEPTED_BACKENDS = {
         "cupy": "cupy",
+        "torch": "torch",
     }
     ACCEPTED_STEP_MODES = {
         "single_step": "s",
@@ -70,13 +71,13 @@ class LightningModuleNonTemporal(pl.LightningModule):
         )
         self.lr = lr
         self.weight_decay = weight_decay
-        self.model_name = model_name
+        self.model_name = model_name.lower()
         self.dvs_mode = dvs_mode
         # if kwargs are passed, parse them
         if kwargs:
             self._parse_kwargs(kwargs)
         # assign model
-        self.model = self._assign_model(model_name)
+        self.model = self._assign_model()
         # For train metrics
         self.train_predictions: List[float] = []
         self.train_ground_truth: List[float] = []
@@ -95,9 +96,11 @@ class LightningModuleNonTemporal(pl.LightningModule):
             "auroc": AUROC("binary"),
         }
 
-    def _assign_model(self, model_name: str) -> nn.Module:
-        module = self.ACCEPTED_MODELS[model_name]
-        if model_name == "resnet18_spiking":
+    def _assign_model(
+        self,
+    ) -> nn.Module:
+        module = self.ACCEPTED_MODELS[self.model_name]
+        if self.model_name == "resnet18_spiking":
             self._ensure_spiking_attrs()
             model = module(
                 neuron_model=self.neuron_model,
@@ -111,19 +114,24 @@ class LightningModuleNonTemporal(pl.LightningModule):
         return model
 
     def _calculate_metrics(
-        self, predictions: List[float], ground_truth: List[float]
+        self, stage: str ,predictions: List[float], ground_truth: List[float]
     ) -> Dict[str, float]:
         """
         Calculates the metrics for the given predictions and ground truth.
         Args:
+            stage (str): Stage of the model (train, val, test).
             predictions (List[float]): List of predictions.
             ground_truth (List[float]): List of ground truth.
         Returns:
             Dict[str, float]: Dictionary with the metrics.
         """
+        assert stage in ["train", "val", "test"], (
+            f"Stage {stage} not supported. "
+            f"Choose one of ['train', 'val', 'test']"
+        )
         metrics = {}
         for name, calculator in self.metrics_calculators.items():
-            metrics[name] = calculator(
+            metrics[f"{stage}_{name}"] = calculator(
                 torch.tensor(predictions), torch.tensor(ground_truth)
             ).item()
         return metrics
@@ -132,7 +140,8 @@ class LightningModuleNonTemporal(pl.LightningModule):
         """
         Parses the keyword arguments and sets the corresponding attributes.
         """
-        for key, value in kwargs.items():
+        for key, value in kwargs["kwargs"].items():
+            value = value.lower()
             if key == "neuron_model":
                 assert value in self.ACCEPTED_NEURON_MODELS.keys(), (
                     f"Neuron model {value} not supported. "
@@ -183,10 +192,10 @@ class LightningModuleNonTemporal(pl.LightningModule):
             self.surrogate_function = surrogate.Sigmoid
         if not hasattr(self, "backend"):
             warn(
-                "No backend specified. Using cpu as default.",
+                "No backend specified. Using torch as default.",
                 UserWarning,
             )
-            self.backend = "cpu"
+            self.backend = "torch"
         if not hasattr(self, "step_mode"):
             warn(
                 """No step mode specified. Using single_step as default.
@@ -212,8 +221,10 @@ class LightningModuleNonTemporal(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         x, y = batch
+        y = y.float()
         y_hat = self.forward(x)
         loss = self.loss(y_hat, y)
+
         self.train_predictions.extend(y_hat.detach().cpu().tolist())
         self.train_ground_truth.extend(y.squeeze().tolist())
         self.log(
@@ -223,11 +234,13 @@ class LightningModuleNonTemporal(pl.LightningModule):
             on_epoch=True,
             prog_bar=True,
             logger=True,
+            sync_dist=True,
         )
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
+        y = y.float()
         y_hat = self.forward(x)
         loss = self.loss(y_hat, y)
         self.val_predictions.extend(y_hat.detach().cpu().tolist())
@@ -235,50 +248,55 @@ class LightningModuleNonTemporal(pl.LightningModule):
         self.log(
             "val_loss",
             loss,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             logger=True,
+            sync_dist=True,
+
         )
         return loss
 
     def test_step(self, batch, batch_idx):
         x, y = batch
+        y = y.float()
         y_hat = self.forward(x)
+        
         loss = self.loss(y_hat, y)
         self.test_predictions.extend(y_hat.detach().cpu().tolist())
         self.test_ground_truth.extend(y.squeeze().tolist())
         self.log(
             "test_loss",
             loss,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             logger=True,
+            sync_dist=True,
         )
         return loss
 
-    def on_training_epoch_end(self):
-        metrics = self._calculate_metrics(
+    def on_train_epoch_end(self):
+        metrics = self._calculate_metrics("train",
             self.train_predictions, self.train_ground_truth
         )
-        self.log_dict(metrics, prog_bar=True, logger=True)
+        self.log_dict(metrics, sync_dist=True,on_epoch=True,on_step=False,prog_bar=True, logger=True)
         self.train_predictions.clear()
         self.train_ground_truth.clear()
 
     def on_validation_epoch_end(self):
-        metrics = self._calculate_metrics(
+        metrics = self._calculate_metrics("val",
             self.val_predictions, self.val_ground_truth
         )
-        self.log_dict(metrics, prog_bar=True, logger=True)
+        self.log_dict(metrics,sync_dist=True,on_epoch=True,on_step=False, prog_bar=True, logger=True)
         self.val_predictions.clear()
         self.val_ground_truth.clear()
 
     def on_test_epoch_end(self):
-        metrics = self._calculate_metrics(
+        metrics = self._calculate_metrics("test",
             self.test_predictions, self.test_ground_truth
-        )
-        self.log_dict(metrics, prog_bar=True, logger=True)
+        ) 
+        self.log_dict(metrics,sync_dist=True,on_epoch=True,on_step=False, prog_bar=True, logger=True)
         self.test_predictions.clear()
         self.test_ground_truth.clear()
 
@@ -293,18 +311,18 @@ class LightningModuleTemporalNets(LightningModuleNonTemporal):
         weight_decay: float = 1e-3,
         **kwargs,
     ):
+        self.ACCEPTED_MODELS["slow_r50"] = slow_r50
         super().__init__(
             model_name, pos_weight, dvs_mode, lr, weight_decay, **kwargs
         )
-        self.ACCEPTED_MODELS["slow_r50"] = slow_r50
+        
 
     def forward_spiking(self, x: Tensor) -> Tensor:
         """
         Forward pass for spiking temporal model.
         """
-
         out = self.model(x.permute(1, 0, 2, 3, 4))
-        out_averaged = out.squeeze(1).mean(0)
+        out_averaged = out.squeeze(2).mean(0)
         out_processed = unsqueeze_dim_if_missing(out_averaged)
         functional.reset_net(self.model)
         return out_processed
@@ -326,7 +344,7 @@ class LightningModuleTemporalNets(LightningModuleNonTemporal):
         """
         Forward pass for slow_r50 models.
         """
-        out = self.model(x.permute(0, 2, 1, 3, 4))
+        out = self.model(x.permute(0, 2, 1, 3, 4)).squeeze(1)
         out_processed = unsqueeze_dim_if_missing(out)
         return out_processed
 

@@ -11,7 +11,7 @@ from utils import (
     set_random_seeds,
 )
 from models import  slow_r50
-from data_loaders import RGBDatasetTemporal, DVSDatasetProper
+from legacy.data_loaders import RGBDatasetTemporal, DVSDatasetProper
 from torchmetrics import Accuracy, F1Score, AUROC
 import gc
 from utils import EarlyStopping

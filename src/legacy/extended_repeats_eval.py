@@ -2,7 +2,7 @@ import os
 import json
 import torch
 from argparse import ArgumentParser
-from data_loaders import (
+from legacy.data_loaders import (
     RGBDatasetRepeated,
     DVSDatasetRepeated,
 )

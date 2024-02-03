@@ -9,3 +9,4 @@ temp_chkpt*
 *results*/
 count_classes.py
 *logs
+*checkpoints*

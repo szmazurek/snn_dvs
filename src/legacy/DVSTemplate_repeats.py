@@ -9,9 +9,8 @@ from utils import (
     unsqueeze_dim_if_missing,
     set_random_seeds,
 )
-from spikingjelly.activation_based import neuron
 from models import Resnet18_DVS, Resnet18_DVS_rgb
-from data_loaders import RGBDatasetTemporal, DVSDatasetProper
+from legacy.data_loaders import RGBDatasetTemporalRepeated, DVSDatasetProperRepeated
 from torchmetrics import Accuracy, F1Score, AUROC
 from spikingjelly.activation_based import functional
 import gc
@@ -23,46 +22,30 @@ api_key_file.close()
 os.environ["WANDB_API_KEY"] = API_KEY
 
 
-accepted_neuron_models = {
-    "lif": neuron.LIFNode,
-    "plif": neuron.ParametricLIFNode,
-    "eif": neuron.EIFNode,
-    "izhikevich": neuron.IzhikevichNode,
-    "klif": neuron.KLIFNode,
-    "liaf": neuron.LIAFNode,
-}
-
-# to test PSN models
-
-
 def normal_training(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint_folder_path = args.checkpoint_folder_path
     checkpoint_file_save = args.checkpoint_file_save
     N_ACCUMULATION_STEPS = args.grad_accumulation_steps
-    neuron_model = args.neuron_model.lower()
-    assert neuron_model in accepted_neuron_models.keys(), (
-        f"Neuron model {neuron_model} not supported. "
-        f"Supported models are {accepted_neuron_models.keys()}"
-    )
-    neuron_model = accepted_neuron_models[neuron_model]
     if args.dvs_mode:
-        full_dataset = DVSDatasetProper(
+        full_dataset = DVSDatasetProperRepeated(
             args.dataset_path,
             target_size=(args.img_height, args.img_width),
             sample_len=args.sample_timestep,
             overlap=args.sample_overlap,
             per_frame_label_mode=args.per_sample_label_model,
+            n_repeats=args.n_repeats,
         )
         net = Resnet18_DVS()
 
     else:
-        full_dataset = RGBDatasetTemporal(
+        full_dataset = RGBDatasetTemporalRepeated(
             args.dataset_path,
             target_size=(args.img_height, args.img_width),
             sample_len=args.sample_timestep,
             overlap=args.sample_overlap,
             per_frame_label_mode=args.per_sample_label_model,
+            n_repeats=args.n_repeats,
         )
         net = Resnet18_DVS_rgb()
 
@@ -109,8 +92,6 @@ def normal_training(args):
         pin_memory=True,
     )
     functional.set_step_mode(net, "m")
-    functional.set_backend(net, "cupy")
-
     optimizer = torch.optim.AdamW(
         net.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
@@ -138,12 +119,15 @@ def normal_training(args):
         label_list_train = torch.Tensor().to(device)
         pred_list_train = torch.Tensor().to(device)
         for i, (img_train, label_train) in enumerate(train_data_loader):
+            # label_val = label_val.permute(1, 0, 2).squeeze(2)
             if i == 0:
                 print(img_train.shape)
 
-            # label_val = label_val.permute(1, 0, 2).squeeze(2)
             label_train = label_train.to(device)
-            img_train = img_train.permute(1, 0, 2, 3, 4)
+            img_train = img_train.repeat(1, args.n_repeats, 1, 1, 1).permute(
+                1, 0, 2, 3, 4
+            )
+
             img_train = img_train.to(device).float()
             out_fr_train = (
                 net(img_train).squeeze().mean(0)
@@ -192,7 +176,9 @@ def normal_training(args):
             for n, (img_val, label_val) in enumerate(val_data_loader):
                 # label_val = label_val.permute(1, 0, 2).squeeze(2)
                 label_val = label_val.to(device)
-                img_val = img_val.permute(1, 0, 2, 3, 4)
+                img_val = img_val.repeat(1, args.n_repeats, 1, 1, 1).permute(
+                    1, 0, 2, 3, 4
+                )
                 img_val = img_val.to(device).float()
                 out_fr_val = net(img_val).squeeze().mean(0)
                 # out_fr_val = net(img_val).squeeze(1)
@@ -244,7 +230,9 @@ def normal_training(args):
         for n, (img_test, label_test) in enumerate(test_data_loader):
             # label_test = label_test.permute(1, 0, 2).squeeze(2)
             label_test = label_test.to(device)
-            img_test = img_test.permute(1, 0, 2, 3, 4)
+            img_test = img_test.repeat(1, args.n_repeats, 1, 1, 1).permute(
+                1, 0, 2, 3, 4
+            )
             img_test = img_test.to(device).float()
             out_fr_test = net(img_test).squeeze().mean(0)
             # out_fr_test = net(img_test).squeeze(1)
@@ -321,7 +309,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--grad_accumulation_steps", type=int, default=1)
     parser.add_argument("--dvs_mode", action="store_true", default=False)
-    parser.add_argument("--neuron_model", type=str, default="lif")
+    parser.add_argument("--n_repeats", type=int, default=3)
     parser.add_argument(
         "--resume_training_model_path",
         type=str,

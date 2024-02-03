@@ -354,12 +354,12 @@ def Resnet18_DVS(neuron_model: neuron.BaseNode = neuron.LIFNode):
 def Resnet18_spiking(
     dvs_mode=False,
     neuron_model: neuron.BaseNode = neuron.LIFNode,
-    surrogate_function: surrogate.SurrogateFunctionBase = surrogate.Sigmoid(),
+    surrogate_function: surrogate.SurrogateFunctionBase = surrogate.Sigmoid,
 ) -> nn.Module:
     net = spiking_resnet.spiking_resnet18(
         pretrained=True,
         spiking_neuron=neuron_model,
-        surrogate_function=surrogate_function,
+        surrogate_function=surrogate_function(),
         detach_reset=True,
     )
     if dvs_mode:
