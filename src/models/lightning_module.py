@@ -352,6 +352,7 @@ class LightningModuleTemporalNets(LightningModuleNonTemporal):
         """
         Forward pass.
         """
+        print(x.shape)
         if self.model_name == "resnet18_spiking":
             return self.forward_spiking(x)
         elif self.model_name == "slow_r50":

@@ -137,6 +137,10 @@ def train_normal_loop(parameters: dict):
         SPIKING_PARAMS = None
     # dataset params
     DATA_ROOT_PATH = parameters["dataset"]["root_path"]
+    if "weather" in os.path.basename(DATA_ROOT_PATH).lower():
+        DATASET_SUBSET = "weather"
+    else:
+        DATASET_SUBSET = "full_ds"
     DATASET_TYPE = parameters["dataset"]["type"]
     if DATASET_TYPE == "repeated":
         REPEATS = parameters["dataset"]["repeats"]
@@ -158,14 +162,14 @@ def train_normal_loop(parameters: dict):
 
     if DATASET_TYPE == "repeated":
         WANDB_NAME = (
-            f"{MODEL_NAME}_{DATASET_TYPE}_{REPEATS}_{MODALITY}_{IMG_SIZE[0]}x{IMG_SIZE[1]}"
+            f"{MODEL_NAME}_{DATASET_TYPE}_{REPEATS}_{DATASET_SUBSET}_{MODALITY}_{IMG_SIZE[0]}x{IMG_SIZE[1]}"
         )
     elif DATASET_TYPE == "temporal":
         WANDB_NAME = (
-            f"{MODEL_NAME}_{DATASET_TYPE}_{MODALITY}_{IMG_SIZE[0]}x{IMG_SIZE[1]}_{TIMESTEP}_{OVERLAP}"
+            f"{MODEL_NAME}_{DATASET_TYPE}_{MODALITY}_{DATASET_SUBSET}_{IMG_SIZE[0]}x{IMG_SIZE[1]}_{TIMESTEP}_{OVERLAP}"
         )
     else:
-        WANDB_NAME = f"{MODEL_NAME}_{DATASET_TYPE}_{MODALITY}_{IMG_SIZE[0]}x{IMG_SIZE[1]}"
+        WANDB_NAME = f"{MODEL_NAME}_{DATASET_TYPE}_{MODALITY}_{DATASET_SUBSET}_{IMG_SIZE[0]}x{IMG_SIZE[1]}"
     video_list = [
         os.path.join(DATA_ROOT_PATH, video)
         for video in os.listdir(DATA_ROOT_PATH)

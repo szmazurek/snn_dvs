@@ -229,9 +229,9 @@ class TemporalSampleDataset(BaseDataset):
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         file_path = self.all_cilp_samples[index]
-        window = torch.cat(
+        window = torch.stack(
             [self.load_image(image) for image in file_path]
-        ).unsqueeze(1)
+        )
         label = torch.tensor(self.all_labels[index])
         return window, label
 
