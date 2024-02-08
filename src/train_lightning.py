@@ -17,14 +17,16 @@ from data_utils.datasets import (
     SingleSampleDataset,
     RepeatedSampleDataset,
     TemporalSampleDataset,
+    PredictionDataset
 )
-
+from torch.utils.data import Dataset
 from typing import Dict, List, Type
 
-AVAILABLE_DATASETS: Dict[str, Type[BaseDataset]] = {
+AVAILABLE_DATASETS: Dict[str, Type[BaseDataset], Type[Dataset]] = {
     "single_sample": SingleSampleDataset,
     "repeated": RepeatedSampleDataset,
     "temporal": TemporalSampleDataset,
+    "prediction": PredictionDataset,
 }
 
 AVAILABLE_MODELS: Dict[str, Type[pl.LightningModule]] = {
@@ -112,6 +114,29 @@ def construct_datasets(
             sample_len=parameters["dataset"]["timestep"],
             overlap=parameters["dataset"]["overlap"],
         )
+    elif dataset_type == "prediction":
+        train_dataset = dataset_class(
+            folder_list=train_videos,
+            dvs_mode=dvs_mode,
+            target_size=target_size,
+            sample_len=parameters["dataset"]["timestep"],
+            overlap=parameters["dataset"]["overlap"],
+            n_frames_predictive_horizon=parameters["dataset"]["n_frames_predictive_horizon"])
+        val_dataset = dataset_class(
+            folder_list=val_videos,
+            dvs_mode=dvs_mode,
+            target_size=target_size,
+            sample_len=parameters["dataset"]["timestep"],
+            overlap=parameters["dataset"]["overlap"],
+            n_frames_predictive_horizon=parameters["dataset"]["n_frames_predictive_horizon"])
+        test_dataset = dataset_class(
+            folder_list=test_videos,
+            dvs_mode=dvs_mode,
+            target_size=target_size,
+            sample_len=parameters["dataset"]["timestep"],
+            overlap=parameters["dataset"]["overlap"],
+            n_frames_predictive_horizon=parameters["dataset"]["n_frames_predictive_horizon"])
+        
     else:
         raise ValueError(f"Unknown dataset type: {dataset_type}")
     return train_dataset, val_dataset, test_dataset
@@ -127,7 +152,8 @@ def train_normal_loop(parameters: dict):
     WEIGHT_DECAY = parameters["weight_decay"]
     EARLY_STOPPING_PATIENCE = parameters["early_stopping_patience"]
     CHECKPOINT_PATH = parameters["checkpoint_path"]
-    DATASET_SAVE_DIR = parameters["dataset_save_dir"]
+    DATASET_SAVE_DIR = parameters["dataset_save_dir"] if "dataset_save_dir" in parameters.keys() else None
+    RESTORE_CHECKPOINT_PATH = parameters["checkpoint_restore_path"] if "checkpoint_restore_path" in parameters.keys() else None
     # model params
     MODEL_NAME = parameters["model"]["name"]
     MODEL_TYPE = parameters["model"]["type"]
@@ -267,10 +293,9 @@ def train_normal_loop(parameters: dict):
         kwargs=SPIKING_PARAMS if SPIKING_PARAMS else {},
     
     )
-    trainer.fit(model, train_loader, val_loader)
+    trainer.fit(model, train_loader, val_loader,ckpt_path=RESTORE_CHECKPOINT_PATH)
     # configure new trainer for testing
     if int(os.environ["SLURM_PROCID"]) == 0:
-
         wandb_logger = pl.loggers.WandbLogger(
             entity=WANDB_ENTITY,
             project=WANDB_PROJECT,
@@ -289,15 +314,15 @@ def train_normal_loop(parameters: dict):
         checkpoint_root_path = os.path.join(SCRIPT_ROOT_DIR, checkpoint_path_run)
         best_checkpoint = os.listdir(checkpoint_root_path)[0]
         best_checkpoint_path = os.path.join(checkpoint_root_path, best_checkpoint)
-        trainer.test(model=model,
-            dataloaders=test_loader, ckpt_path=best_checkpoint_path)
-        # saving test_dataset
-        if not os.path.exists(DATASET_SAVE_DIR):
-            os.makedirs(DATASET_SAVE_DIR)
-        dataset_save_path = os.path.join(DATASET_SAVE_DIR, run_id + ".pt")
-        torch.save(test_dataset,dataset_save_path)
-    # save test fold data
-    # TODO IMPLEMENT THE SAVING!
+        trainer.test(model=model,dataloaders=test_loader, ckpt_path=best_checkpoint_path)
+        wandb.finish()
+        if DATASET_SAVE_DIR is not None:
+            # saving test_dataset
+            if not os.path.exists(DATASET_SAVE_DIR):
+                os.makedirs(DATASET_SAVE_DIR)
+            dataset_save_path = os.path.join(DATASET_SAVE_DIR, run_id + ".pt")
+            torch.save(test_dataset,dataset_save_path)
+            
 
 
 def train_lightning_kfold(parameters):

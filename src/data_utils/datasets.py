@@ -6,7 +6,7 @@ import re
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 from PIL import Image
-
+import numpy as np
 from typing import Tuple, List, Union
 from operator import itemgetter
 from itertools import groupby
@@ -259,3 +259,131 @@ class RepeatedSampleDataset(SingleSampleDataset):
         image = self.load_image(file_path).repeat(self.repeats, 1, 1, 1)
         label = torch.tensor(self.all_labels[index])
         return image, label
+
+
+class PredictionDataset(Dataset):
+    """ A class that first extracts n_frames right BEFORE the event in the video,
+    and then the same number of frames from videos where the event did not occur.
+    Then it creates frames of length given by timestep and overlap parameters.
+    """
+    def __init__(self,
+                 folder_list: List[str],
+                target_size: Tuple[int, int] = (600, 1600),
+                sample_len: int = 4,
+                overlap: int = 0,
+                n_frames_predictive_horizon: int = 10,
+                dvs_mode: bool = False) -> None:
+        self.folder_list = folder_list
+        self.target_size = target_size
+        self.sample_len = sample_len
+        self.overlap = overlap
+        self.n_frames_predictive_horizon = n_frames_predictive_horizon
+        self.dvs_mode = dvs_mode
+        self.all_clips :List[List[str]]= []
+        self.all_labels : List[int]= []
+        self.folder_without_events : List[str]= []
+        self.transform = self._get_transforms()
+        self._perform_full_sample_extraction()
+
+    def __len__(self) -> int:
+        return len(self.all_clips)
+
+    def _perform_full_sample_extraction(self) -> None:
+        for folder in self.folder_list:
+            self._extract_frames_from_video_with_event(folder)
+        n_negative_samples_per_video = len(self.all_clips) // len(self.folder_without_events)
+        for folder in self.folder_without_events:
+            self._extract_clips_from_video_without_event(folder, n_negative_samples_per_video)
+        return None
+
+    def _extract_frames_from_video_with_event(self, folder: str) -> None:
+        all_files = self._extract_all_files_from_folder(folder)
+        all_labels = [
+            int(os.path.splitext(os.path.basename(file_path))[0].split("-")[1])
+            for file_path in all_files
+        ]
+        try:
+            event_frame = all_labels.index(1)
+            all_files_before_event = all_files[max(0, event_frame - self.n_frames_predictive_horizon):event_frame]
+            windows, labels = self._extract_clips_and_labels_from_video(all_files_before_event, True)
+            self.all_clips.extend(windows)
+            self.all_labels.extend(labels)
+        except ValueError:
+            self.folder_without_events.append(folder)
+        return None
+    
+    def _extract_clips_from_video_without_event(self, folder: str, n_clips : int) -> None:
+        all_files = self._extract_all_files_from_folder(folder)
+
+        extracted_clips : List[List[str]] = []
+        labels : List[int] = []
+        while len(extracted_clips) < n_clips:
+            start_frame = np.random.randint(0, len(all_files) - self.sample_len)
+            candidate_window = all_files[start_frame : start_frame + self.sample_len]
+            videos_in_window = set(
+                [os.path.dirname(filename) for filename in candidate_window]
+            )
+            if len(videos_in_window) == 1:
+                extracted_clips.append(candidate_window)
+                labels.append(0)
+        self.all_clips.extend(extracted_clips)
+        self.all_labels.extend(labels)
+        return None
+ 
+    def _extract_clips_and_labels_from_video(self, filenames: List[str], positive: bool) -> Tuple[List[List[str]], List[int]]:
+        windowed_samples = []
+        for i in range(
+            0, len(filenames) - self.sample_len + 1, self.sample_len - self.overlap
+        ):
+            candidate_window = filenames[i : i + self.sample_len]
+            videos_in_window = set(
+                [os.path.dirname(filename) for filename in candidate_window]
+            )
+            if len(videos_in_window) == 1:
+                windowed_samples.append(candidate_window)
+        if positive:
+            labels = [1 for _ in range(len(windowed_samples))]
+        else:
+            labels = [0 for _ in range(len(windowed_samples))]
+        return windowed_samples, labels
+    @staticmethod
+    def _extract_all_files_from_folder( folder: str) -> List[str]:
+        all_files_png = glob.glob(os.path.join(folder, "*.png"))
+        all_files_jpg = glob.glob(os.path.join(folder, "*.jpg"))
+        all_files = all_files_png + all_files_jpg
+        return all_files
+
+    def _get_transforms(self) -> transforms.Compose:
+        if self.dvs_mode:
+            return transforms.Compose(
+                [
+                    transforms.Resize(
+                        self.target_size, interpolation=Image.NEAREST
+                    ),
+                    transforms.PILToTensor(),
+                    transforms.ConvertImageDtype(torch.float),
+                ]
+            )
+        return transforms.Compose(
+            [
+                transforms.Resize(self.target_size),
+                transforms.PILToTensor(),
+                transforms.ConvertImageDtype(torch.float),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+
+    def load_image(self, image: str) -> torch.Tensor:
+        """Loads image from a given path and applies transforms."""
+        img = Image.open(image)
+        return self.transform(img)
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        file_path = self.all_clips[index]
+        window = torch.stack(
+            [self.load_image(image) for image in file_path]
+        )
+        label = torch.tensor(self.all_labels[index])
+        return window, label

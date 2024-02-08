@@ -21,7 +21,7 @@ model : {
 dataset : {
   root_path : ./datasets/dataset_weather_dvs,
   dvs_mode : True, # or False for RGB
-  type : temporal, # either temporal, repeated or single_step
+  type : prediction, # either temporal, repeated or single_step
   img_width : 256,
   img_height : 450,
   evaluation_mode : standard, # or kfold
@@ -31,12 +31,15 @@ dataset : {
   timestep : 9, # only used if type is temporal
   overlap : 8, # only used if type is temporal
   repeats : 10, # only used if type is repeated
+  n_frames_predictive_horizon : 60 # only used if type is prediction
 }
 
 wandb : {
   entity : mazurek,
   project : dvs_final_exp_video_splits,
-  group : spiking_temporal
+  group : spiking_temporal_prediction,
 }
 checkpoint_path : checkpoints_lightning
 dataset_save_dir : results_new_runs/datasets # save the test data for every fold (or entire run)
+# checkpoint_dir_to_restore : checkpoints_lightning/fc4c1039-cd7e-4653-8c34-0757b71f30cf
+

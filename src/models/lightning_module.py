@@ -226,7 +226,11 @@ class LightningModuleNonTemporal(pl.LightningModule):
         loss = self.loss(y_hat, y)
 
         self.train_predictions.extend(y_hat.detach().cpu().tolist())
-        self.train_ground_truth.extend(y.squeeze().tolist())
+        if len(y.shape) > 1:
+            self.train_ground_truth.extend(y.squeeze().tolist())
+        else:
+
+            self.train_ground_truth.extend(y.tolist())
         self.log(
             "train_loss",
             loss,
@@ -244,7 +248,10 @@ class LightningModuleNonTemporal(pl.LightningModule):
         y_hat = self.forward(x)
         loss = self.loss(y_hat, y)
         self.val_predictions.extend(y_hat.detach().cpu().tolist())
-        self.val_ground_truth.extend(y.squeeze().tolist())
+        if len(y.shape) > 1:
+            self.val_ground_truth.extend(y.squeeze().tolist())
+        else:
+            self.val_ground_truth.extend(y.tolist())
         self.log(
             "val_loss",
             loss,
@@ -264,7 +271,10 @@ class LightningModuleNonTemporal(pl.LightningModule):
         
         loss = self.loss(y_hat, y)
         self.test_predictions.extend(y_hat.detach().cpu().tolist())
-        self.test_ground_truth.extend(y.squeeze().tolist())
+        if len(y.shape) > 1:
+            self.test_ground_truth.extend(y.squeeze().tolist())
+        else:
+            self.test_ground_truth.extend(y.tolist())
         self.log(
             "test_loss",
             loss,
@@ -352,7 +362,6 @@ class LightningModuleTemporalNets(LightningModuleNonTemporal):
         """
         Forward pass.
         """
-        print(x.shape)
         if self.model_name == "resnet18_spiking":
             return self.forward_spiking(x)
         elif self.model_name == "slow_r50":
