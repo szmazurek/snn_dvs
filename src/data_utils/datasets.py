@@ -298,6 +298,7 @@ class PredictionDataset(Dataset):
 
     def _extract_frames_from_video_with_event(self, folder: str) -> None:
         all_files = self._extract_all_files_from_folder(folder)
+        all_files = self.sort_frames(all_files)
         all_labels = [
             int(os.path.splitext(os.path.basename(file_path))[0].split("-")[1])
             for file_path in all_files
@@ -308,15 +309,17 @@ class PredictionDataset(Dataset):
             windows, labels = self._extract_clips_and_labels_from_video(all_files_before_event, True)
             self.all_clips.extend(windows)
             self.all_labels.extend(labels)
+
         except ValueError:
             self.folder_without_events.append(folder)
         return None
     
     def _extract_clips_from_video_without_event(self, folder: str, n_clips : int) -> None:
         all_files = self._extract_all_files_from_folder(folder)
-
+        all_files = self.sort_frames(all_files)
         extracted_clips : List[List[str]] = []
         labels : List[int] = []
+
         while len(extracted_clips) < n_clips:
             start_frame = np.random.randint(0, len(all_files) - self.sample_len)
             candidate_window = all_files[start_frame : start_frame + self.sample_len]
@@ -353,6 +356,39 @@ class PredictionDataset(Dataset):
         all_files = all_files_png + all_files_jpg
         return all_files
 
+    @staticmethod
+    def sort_frames(filenames: List[str]) -> List[str]:
+        """
+        Sorts the filenames so that frame order is preserved.
+        Args:
+            filenames (List[str]): list of filenames
+        Returns:
+            List[str]: sorted list of filenames
+        """
+        parsed_filenames = []
+        for filename in filenames:
+            video_id = os.path.dirname(filename)
+            match = re.search(r"(\d+)-", os.path.basename(filename))
+            if match is None:
+                raise ValueError(
+                    f"Filename {filename} does not match the pattern"
+                )
+            frame_number = int(match.group(1))
+
+            parsed_filenames.append((video_id, frame_number, filename))
+
+        # Sort by video ID and frame number
+        parsed_filenames.sort(key=itemgetter(0, 1))
+
+        # Group by video ID
+        grouped_filenames = []
+        for video_id, group in groupby(parsed_filenames, key=itemgetter(0)):
+            grouped_filenames.extend(list(group))
+
+        # Flatten the list and extract filenames
+        sorted_filenames = [filename for _, _, filename in grouped_filenames]
+
+        return sorted_filenames
     def _get_transforms(self) -> transforms.Compose:
         if self.dvs_mode:
             return transforms.Compose(
@@ -387,3 +423,4 @@ class PredictionDataset(Dataset):
         )
         label = torch.tensor(self.all_labels[index])
         return window, label
+        

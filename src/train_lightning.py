@@ -20,9 +20,9 @@ from data_utils.datasets import (
     PredictionDataset
 )
 from torch.utils.data import Dataset
-from typing import Dict, List, Type
+from typing import Dict, List, Type, Union
 
-AVAILABLE_DATASETS: Dict[str, Type[BaseDataset], Type[Dataset]] = {
+AVAILABLE_DATASETS: Dict[str, Union[Type[BaseDataset], Type[Dataset]]] = {
     "single_sample": SingleSampleDataset,
     "repeated": RepeatedSampleDataset,
     "temporal": TemporalSampleDataset,
@@ -173,6 +173,10 @@ def train_normal_loop(parameters: dict):
     elif DATASET_TYPE == "temporal":
         TIMESTEP = parameters["dataset"]["timestep"]
         OVERLAP = parameters["dataset"]["overlap"]
+    elif DATASET_TYPE == "prediction":
+        TIMESTEP = parameters["dataset"]["timestep"]
+        OVERLAP = parameters["dataset"]["overlap"]
+        N_FRAMES_PREDICTIVE_HORIZON = parameters["dataset"]["n_frames_predictive_horizon"]
     DVS_MODE = parameters["dataset"]["dvs_mode"]
     MODALITY = "DVS" if DVS_MODE else "RGB"
     VAL_SIZE = parameters["dataset"]["val_size"]
@@ -194,6 +198,10 @@ def train_normal_loop(parameters: dict):
         WANDB_NAME = (
             f"{MODEL_NAME}_{DATASET_TYPE}_{MODALITY}_{DATASET_SUBSET}_{IMG_SIZE[0]}x{IMG_SIZE[1]}_{TIMESTEP}_{OVERLAP}"
         )
+    elif DATASET_TYPE == "prediction":
+        WANDB_NAME = (
+            f"{MODEL_NAME}_{DATASET_TYPE}_{MODALITY}_{DATASET_SUBSET}_{IMG_SIZE[0]}x{IMG_SIZE[1]}_{TIMESTEP}_{OVERLAP}_horizon_{N_FRAMES_PREDICTIVE_HORIZON}"
+        )
     else:
         WANDB_NAME = f"{MODEL_NAME}_{DATASET_TYPE}_{MODALITY}_{DATASET_SUBSET}_{IMG_SIZE[0]}x{IMG_SIZE[1]}"
     video_list = [
@@ -210,6 +218,9 @@ def train_normal_loop(parameters: dict):
     train_dataset, val_dataset, test_dataset = construct_datasets(
         parameters, train_videos, val_videos, test_videos
     )
+    print(f"Train dataset size: {len(train_dataset)}")
+    print(f"Val dataset size: {len(val_dataset)}")
+    print(f"Test dataset size: {len(test_dataset)}")
     pos_weights = calculate_pos_weight(train_dataset.all_labels)
     train_loader = DataLoader(
         train_dataset,
