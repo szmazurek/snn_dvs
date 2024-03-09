@@ -17,20 +17,26 @@ from data_utils.datasets import (
     SingleSampleDataset,
     RepeatedSampleDataset,
     TemporalSampleDataset,
-    PredictionDataset
+    PredictionDataset,
+    PredictionDatasetSingleStep,
+    PredictionDatasetSingleStepRepeated
 )
-from torch.utils.data import Dataset
-from typing import Dict, List, Type, Union
+from typing import Dict, List, Type
 
-AVAILABLE_DATASETS: Dict[str, Union[Type[BaseDataset], Type[Dataset]]] = {
+AVAILABLE_DATASETS: Dict[str, Type[BaseDataset]] = {
     "single_sample": SingleSampleDataset,
     "repeated": RepeatedSampleDataset,
     "temporal": TemporalSampleDataset,
-    "prediction": PredictionDataset,
+}
+
+AVAILABLE_DATASETS_PREDICTION : Dict[str, Type[PredictionDataset]] = {
+    "prediction_single_sample": PredictionDatasetSingleStep,
+    "prediction_repeated": PredictionDatasetSingleStepRepeated,
+    "prediction_temporal": PredictionDataset
 }
 
 AVAILABLE_MODELS: Dict[str, Type[pl.LightningModule]] = {
-    "non_temporal": LightningModuleNonTemporal,
+    "single_sample": LightningModuleNonTemporal,
     "temporal": LightningModuleTemporalNets,
 }
 
@@ -56,7 +62,10 @@ def construct_datasets(
     img_height = parameters["dataset"]["img_height"]
     dvs_mode = parameters["dataset"]["dvs_mode"]
     target_size = (img_width, img_height)
-    dataset_class = AVAILABLE_DATASETS[dataset_type]
+    if  "prediction" in dataset_type.lower():
+        dataset_class = AVAILABLE_DATASETS_PREDICTION[dataset_type]
+    else:
+        dataset_class = AVAILABLE_DATASETS[dataset_type] # type: ignore
     if dataset_type == "single_sample":
         train_dataset = dataset_class(
             folder_list=train_videos,
@@ -79,7 +88,7 @@ def construct_datasets(
             dvs_mode=dvs_mode,
             target_size=target_size,
             repeats=parameters["dataset"]["repeats"],
-        )
+        ) 
         val_dataset = dataset_class(
             folder_list=val_videos,
             dvs_mode=dvs_mode,
@@ -114,7 +123,7 @@ def construct_datasets(
             sample_len=parameters["dataset"]["timestep"],
             overlap=parameters["dataset"]["overlap"],
         )
-    elif dataset_type == "prediction":
+    elif dataset_type == "prediction_temporal": 
         train_dataset = dataset_class(
             folder_list=train_videos,
             dvs_mode=dvs_mode,
@@ -136,7 +145,42 @@ def construct_datasets(
             sample_len=parameters["dataset"]["timestep"],
             overlap=parameters["dataset"]["overlap"],
             n_frames_predictive_horizon=parameters["dataset"]["n_frames_predictive_horizon"])
-        
+    elif dataset_type == "prediction_single_sample":
+        train_dataset = dataset_class(
+            folder_list=train_videos,
+            dvs_mode=dvs_mode,
+            target_size=target_size,
+            n_frames_predictive_horizon=parameters["dataset"]["n_frames_predictive_horizon"])
+        val_dataset = dataset_class(
+            folder_list=val_videos,
+            dvs_mode=dvs_mode,
+            target_size=target_size,
+            n_frames_predictive_horizon=parameters["dataset"]["n_frames_predictive_horizon"])
+        test_dataset = dataset_class(
+            folder_list=test_videos,
+            dvs_mode=dvs_mode,
+            target_size=target_size,
+            n_frames_predictive_horizon=parameters["dataset"]["n_frames_predictive_horizon"])
+    elif dataset_type == "prediction_repeated":
+        train_dataset = dataset_class(
+            folder_list=train_videos,
+            dvs_mode=dvs_mode,
+            target_size=target_size,
+            repeats=parameters["dataset"]["repeats"],
+            n_frames_predictive_horizon=parameters["dataset"]["n_frames_predictive_horizon"])
+        val_dataset = dataset_class(
+            folder_list=val_videos,
+            dvs_mode=dvs_mode,
+            target_size=target_size,
+            repeats=parameters["dataset"]["repeats"],
+            n_frames_predictive_horizon=parameters["dataset"]["n_frames_predictive_horizon"])
+        test_dataset = dataset_class(
+            folder_list=test_videos,
+            dvs_mode=dvs_mode,
+            target_size=target_size,
+            repeats=parameters["dataset"]["repeats"],
+            n_frames_predictive_horizon=parameters["dataset"]["n_frames_predictive_horizon"])
+
     else:
         raise ValueError(f"Unknown dataset type: {dataset_type}")
     return train_dataset, val_dataset, test_dataset
@@ -168,14 +212,12 @@ def train_normal_loop(parameters: dict):
     else:
         DATASET_SUBSET = "full_ds"
     DATASET_TYPE = parameters["dataset"]["type"]
-    if DATASET_TYPE == "repeated":
+    if "repeated" in DATASET_TYPE.lower():
         REPEATS = parameters["dataset"]["repeats"]
-    elif DATASET_TYPE == "temporal":
+    elif "temporal" in DATASET_TYPE.lower():
         TIMESTEP = parameters["dataset"]["timestep"]
         OVERLAP = parameters["dataset"]["overlap"]
-    elif DATASET_TYPE == "prediction":
-        TIMESTEP = parameters["dataset"]["timestep"]
-        OVERLAP = parameters["dataset"]["overlap"]
+    if "prediction" in DATASET_TYPE.lower() :
         N_FRAMES_PREDICTIVE_HORIZON = parameters["dataset"]["n_frames_predictive_horizon"]
     DVS_MODE = parameters["dataset"]["dvs_mode"]
     MODALITY = "DVS" if DVS_MODE else "RGB"
@@ -198,9 +240,17 @@ def train_normal_loop(parameters: dict):
         WANDB_NAME = (
             f"{MODEL_NAME}_{DATASET_TYPE}_{MODALITY}_{DATASET_SUBSET}_{IMG_SIZE[0]}x{IMG_SIZE[1]}_{TIMESTEP}_{OVERLAP}"
         )
-    elif DATASET_TYPE == "prediction":
+    elif DATASET_TYPE == "prediction_temporal":
         WANDB_NAME = (
             f"{MODEL_NAME}_{DATASET_TYPE}_{MODALITY}_{DATASET_SUBSET}_{IMG_SIZE[0]}x{IMG_SIZE[1]}_{TIMESTEP}_{OVERLAP}_horizon_{N_FRAMES_PREDICTIVE_HORIZON}"
+        )
+    elif DATASET_TYPE == "prediction_repeated":
+        WANDB_NAME = (
+            f"{MODEL_NAME}_{DATASET_TYPE}_{REPEATS}_{MODALITY}_{DATASET_SUBSET}_{IMG_SIZE[0]}x{IMG_SIZE[1]}_horizon_{N_FRAMES_PREDICTIVE_HORIZON}"
+        )
+    elif DATASET_TYPE == "prediction_single_sample":
+        WANDB_NAME = (
+            f"{MODEL_NAME}_{DATASET_TYPE}_{MODALITY}_{DATASET_SUBSET}_{IMG_SIZE[0]}x{IMG_SIZE[1]}_horizon_{N_FRAMES_PREDICTIVE_HORIZON}"
         )
     else:
         WANDB_NAME = f"{MODEL_NAME}_{DATASET_TYPE}_{MODALITY}_{DATASET_SUBSET}_{IMG_SIZE[0]}x{IMG_SIZE[1]}"

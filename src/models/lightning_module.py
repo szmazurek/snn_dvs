@@ -9,7 +9,7 @@ from spikingjelly.activation_based import (
     functional,
     surrogate,
 )
-from .models import slow_r50, Resnet18, Resnet18_spiking
+from .models import slow_r50, Resnet18, Resnet18_spiking, VGG11_spiking, SewResnet18
 from utils import (
     unsqueeze_dim_if_missing,
     perform_forward_pass_on_temporal_batch,
@@ -17,11 +17,14 @@ from utils import (
 from typing import List, Dict, Any, Callable
 from warnings import warn
 
+AVAILABLE_SPIKING_MODELS = ["resnet18_spiking", "vgg11_spiking", "sew_resnet18_spiking"]
 
 class LightningModuleNonTemporal(pl.LightningModule):
     ACCEPTED_MODELS: Dict[str, Callable[..., nn.Module]] = {
         "resnet18": Resnet18,
         "resnet18_spiking": Resnet18_spiking,
+        "vgg11_spiking": VGG11_spiking,
+        "sew_resnet18_spiking": SewResnet18,
     }
     ACCEPTED_NEURON_MODELS: Dict[str, neuron.BaseNode] = {
         "lif": neuron.LIFNode,
@@ -100,12 +103,13 @@ class LightningModuleNonTemporal(pl.LightningModule):
         self,
     ) -> nn.Module:
         module = self.ACCEPTED_MODELS[self.model_name]
-        if self.model_name == "resnet18_spiking":
+        if self.model_name in AVAILABLE_SPIKING_MODELS:
             self._ensure_spiking_attrs()
             model = module(
                 neuron_model=self.neuron_model,
                 surrogate_function=self.surrogate_function,
                 dvs_mode=self.dvs_mode,
+                n_samples=self.n_samples,
             )
             functional.set_step_mode(model, self.step_mode)
             functional.set_backend(model, self.backend)
@@ -141,7 +145,7 @@ class LightningModuleNonTemporal(pl.LightningModule):
         Parses the keyword arguments and sets the corresponding attributes.
         """
         for key, value in kwargs["kwargs"].items():
-            value = value.lower()
+            # value = value.lower()
             if key == "neuron_model":
                 assert value in self.ACCEPTED_NEURON_MODELS.keys(), (
                     f"Neuron model {value} not supported. "
@@ -168,6 +172,9 @@ class LightningModuleNonTemporal(pl.LightningModule):
                     f"Choose one of {self.ACCEPTED_STEP_MODES.keys()}"
                 )
                 self.step_mode = self.ACCEPTED_STEP_MODES[value]
+            elif key == "n_samples":
+                self.n_samples = value
+
             else:
                 warn(
                     f"Unknown keyword argument {key} with value {value}",
@@ -203,6 +210,12 @@ class LightningModuleNonTemporal(pl.LightningModule):
                 UserWarning,
             )
             self.step_mode = "s"
+        if not hasattr(self, "n_samples"):
+            warn(
+                "No n_samples specified. Using 1 as default.",
+                UserWarning,
+            )
+            self.n_samples = 1
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
@@ -215,7 +228,7 @@ class LightningModuleNonTemporal(pl.LightningModule):
         Forward pass.
         """
         out = self.model(x).squeeze(1)
-        if self.model_name == "resnet18_spiking":
+        if self.model_name in AVAILABLE_SPIKING_MODELS:
             functional.reset_net(self.model)
         return out
 
@@ -278,13 +291,15 @@ class LightningModuleNonTemporal(pl.LightningModule):
         self.log(
             "test_loss",
             loss,
-            on_step=False,
+            on_step=True,
             on_epoch=True,
             prog_bar=True,
             logger=True,
             sync_dist=True,
         )
         return loss
+    
+        
 
     def on_train_epoch_end(self):
         metrics = self._calculate_metrics("train",
@@ -362,7 +377,7 @@ class LightningModuleTemporalNets(LightningModuleNonTemporal):
         """
         Forward pass.
         """
-        if self.model_name == "resnet18_spiking":
+        if self.model_name in AVAILABLE_SPIKING_MODELS: 
             return self.forward_spiking(x)
         elif self.model_name == "slow_r50":
             return self.forward_slowr50(x)

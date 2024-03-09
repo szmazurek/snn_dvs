@@ -272,7 +272,9 @@ class PredictionDataset(Dataset):
                 sample_len: int = 4,
                 overlap: int = 0,
                 n_frames_predictive_horizon: int = 10,
-                dvs_mode: bool = False) -> None:
+                dvs_mode: bool = False,
+                repeats : int = 1
+                ) -> None:
         self.folder_list = folder_list
         self.target_size = target_size
         self.sample_len = sample_len
@@ -424,3 +426,88 @@ class PredictionDataset(Dataset):
         label = torch.tensor(self.all_labels[index])
         return window, label
         
+
+class PredictionDatasetSingleStep(PredictionDataset):
+    """ A class that first extracts n_frames right BEFORE the event in the video,
+    and then the same number of frames from videos where the event did not occur.
+    Then the extracted frames are treated as separate samples.
+    """
+    def __init__(self,
+                 folder_list: List[str],
+                target_size: Tuple[int, int] = (600, 1600),
+                n_frames_predictive_horizon: int = 10,
+                dvs_mode: bool = False) -> None:
+        self.folder_list = folder_list
+        self.target_size = target_size
+        self.n_frames_predictive_horizon = n_frames_predictive_horizon
+        self.dvs_mode = dvs_mode
+        self.all_clips :List[str]= [] # type: ignore
+        self.all_labels : List[int]= []
+        self.folder_without_events : List[str]= []
+        self.transform = self._get_transforms()
+        self._perform_full_sample_extraction()
+
+    def _perform_full_sample_extraction(self) -> None:
+        for folder in self.folder_list:
+            self._extract_frames_from_video_with_event(folder)
+        n_negative_samples_per_video = len(self.all_clips) // len(self.folder_without_events)
+        for folder in self.folder_without_events:
+            self._extract_clips_from_video_without_event(folder, n_negative_samples_per_video)
+        return None
+
+    def _extract_frames_from_video_with_event(self, folder: str) -> None:
+        all_files = self._extract_all_files_from_folder(folder)
+        all_files = self.sort_frames(all_files)
+        all_labels = [
+            int(os.path.splitext(os.path.basename(file_path))[0].split("-")[1])
+            for file_path in all_files
+        ]
+        try:
+            event_frame = all_labels.index(1)
+            all_files_before_event = all_files[max(0, event_frame - self.n_frames_predictive_horizon):event_frame]
+            
+            self.all_clips.extend(all_files_before_event)
+            self.all_labels.extend([1 for _ in range(len(all_files_before_event))])
+        except ValueError:
+            self.folder_without_events.append(folder)
+        return None
+    def _extract_clips_from_video_without_event(self, folder: str, n_clips : int) -> None:
+        all_files = self._extract_all_files_from_folder(folder)
+        all_files = self.sort_frames(all_files)
+
+        random_n_frames = np.random.choice(all_files, n_clips, replace = False)
+        self.all_clips.extend(random_n_frames)
+        self.all_labels.extend([0 for _ in range(n_clips)])
+    
+    def __len__(self) -> int:
+        return len(self.all_clips)
+    
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        file_path = self.all_clips[index]
+        image = self.load_image(file_path)
+        label = torch.tensor(self.all_labels[index])
+        return image, label
+    
+
+class PredictionDatasetSingleStepRepeated(PredictionDatasetSingleStep):
+    """ A class that first extracts n_frames right BEFORE the event in the video,
+    and then the same number of frames from videos where the event did not occur.
+    Then the extracted frames are treated as separate samples and repeated multiple times.
+    """
+    def __init__(self,
+                 folder_list: List[str],
+                target_size: Tuple[int, int] = (600, 1600),
+                n_frames_predictive_horizon: int = 10,
+                dvs_mode: bool = False,
+                repeats: int = 1) -> None:
+        super().__init__(folder_list, target_size, n_frames_predictive_horizon, dvs_mode)
+        self.repeats = repeats
+        
+    def __len__(self) -> int:
+        return len(self.all_clips)
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        file_path = self.all_clips[index]
+        image = self.load_image(file_path).repeat(self.repeats, 1, 1, 1)
+        label = torch.tensor(self.all_labels[index])
+        return image, label
