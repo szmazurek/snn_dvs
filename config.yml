@@ -13,17 +13,17 @@ model : {
   spiking_params : {
     neuron_model : plif,
     surrogate_function : sigmoid,
-    n_samples : 9,
-    step_mode : single_step,
+    n_samples : 10,
+    step_mode : multi_step, # single_step, multi_step
     backend : torch,
     
   }
 }
 
 dataset : {
-  root_path : ./datasets/dataset_weather_rgb,
+  root_path : ./datasets/dataset_jaad/good_weather,
   dvs_mode : False, # or False for RGB
-  type : prediction_temporal, # either temporal, repeated, single_sample, prediction_temporal, prediction_single_sample, prediction_repeated
+  type : repeated, # either temporal, repeated, single_sample, prediction_temporal, prediction_single_sample, prediction_repeated
   img_width : 256,
   img_height : 450,
   evaluation_mode : standard, # or kfold
@@ -37,9 +37,9 @@ dataset : {
 }
 
 wandb : {
-  entity : mazurek,
-  project : dvs_final_exp_video_splits_prediction,
-  group : sew_resnet_tebn_temporal,
+  entity : ml_agh,
+  project : jaad_experiments,
+  group : paper_experiments1,
 }
 checkpoint_path : checkpoints_lightning
 dataset_save_dir : results_new_runs/datasets # save the test data for every fold (or entire run)

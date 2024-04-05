@@ -10,3 +10,4 @@ temp_chkpt*
 count_classes.py
 *logs
 *checkpoints*
+test_wandb.py

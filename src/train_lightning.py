@@ -303,6 +303,7 @@ def train_normal_loop(parameters: dict):
                 entity=WANDB_ENTITY,
                 group=WANDB_GROUP,
                 name=WANDB_NAME,
+                config=parameters
             )
         wandb.log({"run_id": run_id})
    
