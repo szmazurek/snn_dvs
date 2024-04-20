@@ -1,29 +1,29 @@
 seed : 42
 batch_size : 16
 epochs : 100
-lr : 0.001
+lr : 0.0001
 weight_decay : 0.1
 early_stopping_patience : 8
 
 # spiking params are optional, if not specified, default values will be used
 # models : resnet18, resnet18_spiking, slow_r50, vgg11_spiking, sew_resnet18_spiking
 model : {
-  type : temporal, # or temporal, or single_sample
-  name : sew_resnet18_spiking,
+  type : single_sample, # or temporal, or single_sample
+  name : resnet18,
   spiking_params : {
     neuron_model : plif,
     surrogate_function : sigmoid,
     n_samples : 10,
-    step_mode : multi_step, # single_step, multi_step
+    step_mode : single_step, # single_step, multi_step
     backend : torch,
     
   }
 }
 
 dataset : {
-  root_path : ./datasets/dataset_jaad/good_weather,
+  root_path : ./datasets/dataset_jaad/good_weather/,
   dvs_mode : False, # or False for RGB
-  type : repeated, # either temporal, repeated, single_sample, prediction_temporal, prediction_single_sample, prediction_repeated
+  type : single_sample, # either temporal, repeated, single_sample, prediction_temporal, prediction_single_sample, prediction_repeated
   img_width : 256,
   img_height : 450,
   evaluation_mode : standard, # or kfold
@@ -43,7 +43,7 @@ wandb : {
 }
 checkpoint_path : checkpoints_lightning
 dataset_save_dir : results_new_runs/datasets # save the test data for every fold (or entire run)
-# checkpoint_dir_to_restore : checkpoints_lightning/5a72c1f4-f671-45ff-a55f-c7ff6260ead6
+  #checkpoint_dir_to_restore : checkpoints_lightning/8e7a9d93-7575-4272-82f2-3bbb9dd35e75
 
 
 
