@@ -1,20 +1,18 @@
 seed : 42
 batch_size : 16
 epochs : 100
-lr : 0.0001
+lr : 0.001
 weight_decay : 0.1
 early_stopping_patience : 8
 
-# spiking params are optional, if not specified, default values will be used
-# models : resnet18, resnet18_spiking, slow_r50, vgg11_spiking, sew_resnet18_spiking
 model : {
-  type : single_sample, # or temporal, or single_sample
+  type : temporal,
   name : resnet18,
   spiking_params : {
     neuron_model : plif,
     surrogate_function : sigmoid,
-    n_samples : 10,
-    step_mode : single_step, # single_step, multi_step
+    n_samples : 9,
+    step_mode : single_step,
     backend : torch,
     
   }
@@ -22,16 +20,16 @@ model : {
 
 dataset : {
   root_path : ./datasets/dataset_jaad/good_weather/,
-  dvs_mode : False, # or False for RGB
-  type : single_sample, # either temporal, repeated, single_sample, prediction_temporal, prediction_single_sample, prediction_repeated
+  dvs_mode : False,
+  type : temporal,
   img_width : 256,
   img_height : 450,
   evaluation_mode : standard, # or kfold
   n_folds : 5, # only used if evaluation_mode is kfold
   val_size : 0.15, # always used
   test_size : 0.15, # only used if evaluation_mode is standard
-  timestep : 9, # only used if type is temporal
-  overlap : 8, # only used if type is temporal
+  timestep : 9, # only used if type is temporal  #30
+  overlap : 8, # only used if type is temporal  #29
   repeats : 10, # only used if type is repeated
   n_frames_predictive_horizon : 150 # only used if type is prediction
 }
@@ -39,11 +37,12 @@ dataset : {
 wandb : {
   entity : ml_agh,
   project : jaad_experiments,
-  group : paper_experiments1,
+  group : paper_experiments2,
 }
+
 checkpoint_path : checkpoints_lightning
 dataset_save_dir : results_new_runs/datasets # save the test data for every fold (or entire run)
-  #checkpoint_dir_to_restore : checkpoints_lightning/8e7a9d93-7575-4272-82f2-3bbb9dd35e75
+#checkpoint_dir_to_restore : checkpoints_lightning/8e7a9d93-7575-4272-82f2-3bbb9dd35e75
 
 
 
