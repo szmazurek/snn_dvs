@@ -40,6 +40,8 @@ AVAILABLE_MODELS: Dict[str, Type[pl.LightningModule]] = {
     "temporal": LightningModuleTemporalNets,
 }
 
+
+torch.use_deterministic_algorithms(True, warn_only=True)
 torch.set_float32_matmul_precision("medium")
 
 SCRIPT_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -121,7 +123,8 @@ def construct_datasets(
             dvs_mode=dvs_mode,
             target_size=target_size,
             sample_len=parameters["dataset"]["timestep"],
-            overlap=parameters["dataset"]["overlap"],
+            #overlap=parameters["dataset"]["overlap"],
+            overlap=0
         )
     elif dataset_type == "prediction_temporal": 
         train_dataset = dataset_class(
@@ -188,7 +191,6 @@ def construct_datasets(
 
 def train_normal_loop(parameters: dict):
     """Train the model using the normal training loop."""
-    pl.seed_everything(parameters["seed"])
     # general params
     EPOCHS = parameters["epochs"]
     BATCH_SIZE = parameters["batch_size"]
@@ -271,7 +273,9 @@ def train_normal_loop(parameters: dict):
     print(f"Train dataset size: {len(train_dataset)}")
     print(f"Val dataset size: {len(val_dataset)}")
     print(f"Test dataset size: {len(test_dataset)}")
+    print(f"Testo videos: {test_videos}")
     pos_weights = calculate_pos_weight(train_dataset.all_labels)
+    print(pos_weights)
     train_loader = DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,
@@ -342,9 +346,10 @@ def train_normal_loop(parameters: dict):
         log_every_n_steps=1,
         sync_batchnorm=True,
         fast_dev_run=False,
+        deterministic=False,
         num_nodes=1
     )
-    pl.seed_everything(parameters["seed"])  # reset seed for reproducibility
+    # pl.seed_everything(parameters["seed"],workers=True)  # reset seed for reproducibility
     model = AVAILABLE_MODELS[MODEL_TYPE](
         model_name=MODEL_NAME,
         dvs_mode=DVS_MODE,
@@ -516,9 +521,10 @@ def train_lightning_kfold(parameters):
 
 
 if __name__ == "__main__":
+    
     with open("./config.yml", "r") as f:
         parameters = yaml.load(f, Loader=yaml.FullLoader)
-
+    pl.seed_everything(parameters["seed"],workers=True)
     if parameters["dataset"]["evaluation_mode"] == "kfold":
         train_lightning_kfold(parameters)
     else:
