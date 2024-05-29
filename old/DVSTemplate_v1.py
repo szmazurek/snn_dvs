@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from utils import train_val_dataset, save_model, f1_score as f1
 from spikingjelly.activation_based import functional
 from models import SNN_1 as SNN
-from data_loaders import DvsDataset
+from legacy.data_loaders import DvsDataset
 
 
 def main():

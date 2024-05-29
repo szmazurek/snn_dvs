@@ -12,15 +12,20 @@ from itertools import groupby
 
 
 class RGBDataset(Dataset):
-    def __init__(self, target_dir: str) -> None:
+    def __init__(
+        self, target_dir: str, target_size: Tuple[int, int] = (600, 1600)
+    ) -> None:
         self.all_folders = [
-            os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
+            os.path.join(target_dir, directory)
+            for directory in os.listdir(target_dir)
         ]
         all_files_png = [
-            glob.glob(os.path.join(folders, "*.png")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.png"))
+            for folders in self.all_folders
         ]
         all_files_jpg = [
-            glob.glob(os.path.join(folders, "*.jpg")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.jpg"))
+            for folders in self.all_folders
         ]
         self.all_files = all_files_png + all_files_jpg
         self.all_files = [e for sub in self.all_files for e in sub]
@@ -31,8 +36,7 @@ class RGBDataset(Dataset):
         ]
         self.transform = transforms.Compose(
             [
-                transforms.Resize((150, 400)),
-                transforms.RandomHorizontalFlip(),
+                transforms.Resize(target_size),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
                 transforms.Normalize(
@@ -61,15 +65,20 @@ class DVSDatasetAsRGB(Dataset):
     with different resize method and not normalizing to ImageNet images
     """
 
-    def __init__(self, target_dir: str) -> None:
+    def __init__(
+        self, target_dir: str, target_size: Tuple[int, int] = (600, 1600)
+    ) -> None:
         self.all_folders = [
-            os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
+            os.path.join(target_dir, directory)
+            for directory in os.listdir(target_dir)
         ]
         all_files_png = [
-            glob.glob(os.path.join(folders, "*.png")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.png"))
+            for folders in self.all_folders
         ]
         all_files_jpg = [
-            glob.glob(os.path.join(folders, "*.jpg")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.jpg"))
+            for folders in self.all_folders
         ]
         self.all_files = all_files_png + all_files_jpg
         self.all_files = [e for sub in self.all_files for e in sub]
@@ -80,8 +89,7 @@ class DVSDatasetAsRGB(Dataset):
         ]
         self.transform = transforms.Compose(
             [
-                transforms.Resize((150, 400), interpolation=Image.NEAREST),
-                transforms.RandomHorizontalFlip(),
+                transforms.Resize(target_size, interpolation=Image.NEAREST),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
             ]
@@ -102,21 +110,24 @@ class DVSDatasetAsRGB(Dataset):
         return image, label
 
 
-class DVSDatasetRepeated(Dataset):
-    """Abstraction representing a DVS based dataset, where eery sample
-    is artificially transformed into timeseries via repeating one
-    frame time_dim times.
-    """
-
-    def __init__(self, target_dir: str, time_dim: int = 32) -> None:
+class RGBDatasetRepeated(Dataset):
+    def __init__(
+        self,
+        target_dir: str,
+        sample_len: int = 32,
+        target_size: Tuple[int, int] = (600, 1600),
+    ) -> None:
         self.all_folders = [
-            os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
+            os.path.join(target_dir, directory)
+            for directory in os.listdir(target_dir)
         ]
         all_files_png = [
-            glob.glob(os.path.join(folders, "*.png")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.png"))
+            for folders in self.all_folders
         ]
         all_files_jpg = [
-            glob.glob(os.path.join(folders, "*.jpg")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.jpg"))
+            for folders in self.all_folders
         ]
         self.all_files = all_files_png + all_files_jpg
         self.all_files = [e for sub in self.all_files for e in sub]
@@ -125,11 +136,69 @@ class DVSDatasetRepeated(Dataset):
             int(os.path.splitext(os.path.basename(file_path))[0].split("-")[1])
             for file_path in self.all_files
         ]
-        self.time_dim = time_dim
+        self.time_dim = sample_len
+
         self.transform = transforms.Compose(
             [
-                transforms.Resize((150, 400), interpolation=Image.NEAREST),
-                transforms.RandomHorizontalFlip(),
+                transforms.Resize(target_size),
+                transforms.PILToTensor(),
+                transforms.ConvertImageDtype(torch.float),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+
+    def load_image(self, image) -> torch.Tensor:
+        img = Image.open(image)
+        return self.transform(img)
+
+    def __len__(self) -> int:
+        return len(self.all_files)
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        file_path = self.all_files[index]
+        image = self.load_image(file_path).repeat(self.time_dim, 1, 1, 1)
+        label = torch.tensor(self.all_labels[index])
+
+        return image, label
+
+
+class DVSDatasetRepeated(Dataset):
+    """Abstraction representing a DVS based dataset, where every sample
+    is artificially transformed into timeseries via repeating one
+    frame time_dim times.
+    """
+
+    def __init__(
+        self,
+        target_dir: str,
+        sample_len: int = 32,
+        target_size: Tuple[int, int] = (600, 1600),
+    ) -> None:
+        self.all_folders = [
+            os.path.join(target_dir, directory)
+            for directory in os.listdir(target_dir)
+        ]
+        all_files_png = [
+            glob.glob(os.path.join(folders, "*.png"))
+            for folders in self.all_folders
+        ]
+        all_files_jpg = [
+            glob.glob(os.path.join(folders, "*.jpg"))
+            for folders in self.all_folders
+        ]
+        self.all_files = all_files_png + all_files_jpg
+        self.all_files = [e for sub in self.all_files for e in sub]
+
+        self.all_labels = [
+            int(os.path.splitext(os.path.basename(file_path))[0].split("-")[1])
+            for file_path in self.all_files
+        ]
+        self.time_dim = sample_len
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize(target_size, interpolation=Image.NEAREST),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
             ]
@@ -142,7 +211,7 @@ class DVSDatasetRepeated(Dataset):
     def __len__(self) -> int:
         return len(self.all_files)
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         file_path = self.all_files[index]
         image = self.load_image(file_path).repeat(self.time_dim, 1, 1, 1)
         label = torch.tensor(self.all_labels[index])
@@ -157,6 +226,8 @@ class DVSDatasetProper(Dataset):
     Args:
         target_dir (str): directory with subfolders containing video
     frames.
+        target_size (Tuple[int,int]): Tuple of (height, width) denoting
+    final image size after the resizing transform. Defaults to (600,1600).
         sample_len (int, optional): length of a sample. Defaults to 4.
         overlap (int, optional): overlap between samples. Defaults to 0.
         per_frame_label_mode (bool, optional): if True, every frame in
@@ -166,18 +237,22 @@ class DVSDatasetProper(Dataset):
     def __init__(
         self,
         target_dir: str,
+        target_size: Tuple[int, int] = (600, 1600),
         sample_len: int = 4,
         overlap: int = 0,
         per_frame_label_mode: bool = False,
     ) -> None:
         self.all_folders = [
-            os.path.join(target_dir, directory) for directory in os.listdir(target_dir)
+            os.path.join(target_dir, directory)
+            for directory in os.listdir(target_dir)
         ]
         all_files_png = [
-            glob.glob(os.path.join(folders, "*.png")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.png"))
+            for folders in self.all_folders
         ]
         all_files_jpg = [
-            glob.glob(os.path.join(folders, "*.jpg")) for folders in self.all_folders
+            glob.glob(os.path.join(folders, "*.jpg"))
+            for folders in self.all_folders
         ]
         all_files = all_files_png + all_files_jpg
         all_files = [e for sub in all_files for e in sub]
@@ -202,15 +277,18 @@ class DVSDatasetProper(Dataset):
         else:
             self.all_labels = per_frame_labels
             self.labels_count = [
-                int(os.path.splitext(os.path.basename(file_path))[0].split("-")[-1])
+                int(
+                    os.path.splitext(os.path.basename(file_path))[0].split(
+                        "-"
+                    )[-1]
+                )
                 for file_path in all_files_sorted
             ]
         self.time_dim = sample_len
         self.overlap = overlap
         self.transform = transforms.Compose(
             [
-                transforms.Resize((150, 400), interpolation=Image.NEAREST),
-                transforms.RandomHorizontalFlip(),
+                transforms.Resize(target_size, interpolation=Image.NEAREST),
                 transforms.PILToTensor(),
                 transforms.ConvertImageDtype(torch.float),
             ]
@@ -220,7 +298,9 @@ class DVSDatasetProper(Dataset):
     def create_window_labels(window: List[str]) -> List[int]:
         """Creates a list of labels for a given windowed sample."""
         labels_per_frame = [
-            int(os.path.splitext(os.path.basename(file_path))[0].split("-")[-1])
+            int(
+                os.path.splitext(os.path.basename(file_path))[0].split("-")[-1]
+            )
             for file_path in window
         ]
         return labels_per_frame
@@ -234,7 +314,9 @@ class DVSDatasetProper(Dataset):
         """
         windowed_samples = []
 
-        for i in range(0, len(filenames) - sample_len + 1, sample_len - overlap):
+        for i in range(
+            0, len(filenames) - sample_len + 1, sample_len - overlap
+        ):
             candidate_window = filenames[i : i + sample_len]
             videos_in_window = set(
                 [os.path.dirname(filename) for filename in candidate_window]
@@ -275,9 +357,141 @@ class DVSDatasetProper(Dataset):
     def __len__(self) -> int:
         return len(self.all_samples)
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         file_path = self.all_samples[index]
-        window = torch.cat([self.load_image(image) for image in file_path]).unsqueeze(1)
+        window = torch.cat(
+            [self.load_image(image) for image in file_path]
+        ).unsqueeze(1)
+        label = torch.tensor(self.all_labels[index])
+        return window, label
+
+
+class DVSDatasetProperRepeated(DVSDatasetProper):
+    """A class that loads DVS frames as a temporal sequence of images,
+    but every frame is repeated n_repeats times.
+    """
+
+    def __init__(
+        self,
+        target_dir: str,
+        target_size: Tuple[int, int] = (600, 1600),
+        sample_len: int = 4,
+        overlap: int = 0,
+        per_frame_label_mode: bool = False,
+        n_repeats: int = 1,
+    ) -> None:
+        super().__init__(
+            target_dir, target_size, sample_len, overlap, per_frame_label_mode
+        )
+        self.n_repeats = n_repeats
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        file_path = self.all_samples[index]
+        window = torch.cat(
+            [
+                self.load_image(image)  # .repeat(self.n_repeats, 1, 1, 1)
+                for image in file_path
+            ]
+        ).unsqueeze(
+            1
+        )  # .repeat(self.n_repeats, 1, 1, 1)
+        label = torch.tensor(self.all_labels[index])
+        return window, label
+
+
+class RGBDatasetTemporal(DVSDatasetProper):
+    """A class that loads RGB frames as a temporal sequence of images.
+    Only transforms are overriden (changed interpolation and normalization).
+    """
+
+    def __init__(
+        self,
+        target_dir: str,
+        target_size: Tuple[int, int] = (600, 1600),
+        sample_len: int = 4,
+        overlap: int = 0,
+        per_frame_label_mode: bool = False,
+    ) -> None:
+        super().__init__(
+            target_dir, target_size, sample_len, overlap, per_frame_label_mode
+        )
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize(target_size),
+                transforms.PILToTensor(),
+                transforms.ConvertImageDtype(torch.float),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        file_path = self.all_samples[index]
+        window = torch.stack([self.load_image(image) for image in file_path])
+        label = torch.tensor(self.all_labels[index])
+        return window, label
+
+
+class RGBDatasetTemporalRepeated(RGBDatasetTemporal):
+    """A class that loads RGB frames as a temporal sequence of images,
+    but every frame is repeated n_repeats times.
+    """
+
+    def __init__(
+        self,
+        target_dir: str,
+        target_size: Tuple[int, int] = (600, 1600),
+        sample_len: int = 4,
+        overlap: int = 0,
+        per_frame_label_mode: bool = False,
+        n_repeats: int = 1,
+    ) -> None:
+        super().__init__(
+            target_dir, target_size, sample_len, overlap, per_frame_label_mode
+        )
+        self.n_repeats = n_repeats
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        file_path = self.all_samples[index]
+        window = torch.cat(
+            [
+                self.load_image(image).repeat(self.n_repeats, 1, 1, 1)
+                for image in file_path
+            ]
+        ).unsqueeze(1)
+        label = torch.tensor(self.all_labels[index])
+        return window, label
+
+
+class DVSDatasetTemporalforNonTemporalNet(DVSDatasetProper):
+    """A class that loads DVS frames as a temporal sequence of images to be
+    evaluated with standard Resnet.
+    Only transforms are overriden (changed interpolation and normalization).
+    """
+
+    def __init__(
+        self,
+        target_dir: str,
+        target_size: Tuple[int, int] = (600, 1600),
+        sample_len: int = 4,
+        overlap: int = 0,
+        per_frame_label_mode: bool = False,
+    ) -> None:
+        super().__init__(
+            target_dir, target_size, sample_len, overlap, per_frame_label_mode
+        )
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize(target_size),
+                transforms.PILToTensor(),
+                transforms.ConvertImageDtype(torch.float),
+            ]
+        )
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        file_path = self.all_samples[index]
+        window = torch.stack([self.load_image(image) for image in file_path])
         label = torch.tensor(self.all_labels[index])
         return window, label
 

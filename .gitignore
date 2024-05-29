@@ -3,3 +3,10 @@ datasets/
 wandb*
 output*
 *pycache*
+saved*
+temp_chkpt*
+*env/
+*results*/
+count_classes.py
+*logs
+*checkpoints*
