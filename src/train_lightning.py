@@ -146,7 +146,8 @@ def construct_datasets(
             dvs_mode=dvs_mode,
             target_size=target_size,
             sample_len=parameters["dataset"]["timestep"],
-            overlap=parameters["dataset"]["overlap"],
+            # overlap=parameters["dataset"]["overlap"],
+            overlap=0,
             n_frames_predictive_horizon=parameters["dataset"]["n_frames_predictive_horizon"])
     elif dataset_type == "prediction_single_sample":
         train_dataset = dataset_class(
@@ -209,10 +210,20 @@ def train_normal_loop(parameters: dict):
         SPIKING_PARAMS = None
     # dataset params
     DATA_ROOT_PATH = parameters["dataset"]["root_path"]
+    # case for simulation dataset
     if "weather" in os.path.basename(DATA_ROOT_PATH).lower():
         DATASET_SUBSET = "weather"
     else:
         DATASET_SUBSET = "full_ds"
+    # case for jaad
+    if "bad_weather" in os.path.basename(DATA_ROOT_PATH).lower():
+        DATASET_SUBSET = "weather"
+    if "good_weather" in os.path.basename(DATA_ROOT_PATH).lower():
+        DATASET_SUBSET = "full_ds"
+    
+    
+
+   
     DATASET_TYPE = parameters["dataset"]["type"]
     if "repeated" in DATASET_TYPE.lower():
         REPEATS = parameters["dataset"]["repeats"]
@@ -307,6 +318,7 @@ def train_normal_loop(parameters: dict):
                 entity=WANDB_ENTITY,
                 group=WANDB_GROUP,
                 name=WANDB_NAME,
+                config=parameters
             )
         wandb.log({"run_id": run_id})
    

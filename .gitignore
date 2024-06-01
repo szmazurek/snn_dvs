@@ -10,3 +10,5 @@ temp_chkpt*
 count_classes.py
 *logs
 *checkpoints*
+dataset_jaad/
+dataset_carla/

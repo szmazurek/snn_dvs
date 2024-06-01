@@ -107,10 +107,10 @@ def Resnet18_spiking(
     n_samples : int = 10
 ) -> nn.Module:
     net = spiking_resnet.spiking_resnet18(
-        pretrained=False,
+        pretrained=True,
         spiking_neuron=neuron_model,
         surrogate_function=surrogate_function(),
-        detach_reset=False,
+        detach_reset=True,
     )
     if dvs_mode:
         net.conv1 = layer.Conv2d(
