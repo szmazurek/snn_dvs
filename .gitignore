@@ -11,3 +11,4 @@ count_classes.py
 *logs
 *checkpoints*
 dataset_jaad
+legacy/

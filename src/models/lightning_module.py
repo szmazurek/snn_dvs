@@ -19,6 +19,7 @@ from warnings import warn
 
 AVAILABLE_SPIKING_MODELS = ["resnet18_spiking", "vgg11_spiking", "sew_resnet18_spiking"]
 
+
 class LightningModuleNonTemporal(pl.LightningModule):
     ACCEPTED_MODELS: Dict[str, Callable[..., nn.Module]] = {
         "resnet18": Resnet18,
@@ -34,9 +35,7 @@ class LightningModuleNonTemporal(pl.LightningModule):
         "klif": neuron.KLIFNode,
         "liaf": neuron.LIAFNode,
     }
-    ACCEPTED_SURROGATE_FUNCTIONS: Dict[
-        str, surrogate.SurrogateFunctionBase
-    ] = {
+    ACCEPTED_SURROGATE_FUNCTIONS: Dict[str, surrogate.SurrogateFunctionBase] = {
         "sigmoid": surrogate.Sigmoid,
         "atan": surrogate.ATan,
     }
@@ -69,9 +68,7 @@ class LightningModuleNonTemporal(pl.LightningModule):
             **kwargs: Keyword arguments for the Resnet18_spiking model.
         """
         super().__init__()
-        self.loss = nn.BCEWithLogitsLoss(
-            pos_weight=torch.full([1], pos_weight)
-        )
+        self.loss = nn.BCEWithLogitsLoss(pos_weight=torch.full([1], pos_weight))
         self.lr = lr
         self.weight_decay = weight_decay
         self.model_name = model_name.lower()
@@ -118,7 +115,7 @@ class LightningModuleNonTemporal(pl.LightningModule):
         return model
 
     def _calculate_metrics(
-        self, stage: str ,predictions: List[float], ground_truth: List[float]
+        self, stage: str, predictions: List[float], ground_truth: List[float]
     ) -> Dict[str, float]:
         """
         Calculates the metrics for the given predictions and ground truth.
@@ -130,8 +127,7 @@ class LightningModuleNonTemporal(pl.LightningModule):
             Dict[str, float]: Dictionary with the metrics.
         """
         assert stage in ["train", "val", "test"], (
-            f"Stage {stage} not supported. "
-            f"Choose one of ['train', 'val', 'test']"
+            f"Stage {stage} not supported. " f"Choose one of ['train', 'val', 'test']"
         )
         metrics = {}
         for name, calculator in self.metrics_calculators.items():
@@ -157,9 +153,7 @@ class LightningModuleNonTemporal(pl.LightningModule):
                     f"Surrogate function {value} not supported. "
                     f"Choose one of {self.ACCEPTED_SURROGATE_FUNCTIONS.keys()}"
                 )
-                self.surrogate_function = self.ACCEPTED_SURROGATE_FUNCTIONS[
-                    value
-                ]
+                self.surrogate_function = self.ACCEPTED_SURROGATE_FUNCTIONS[value]
             elif key == "backend":
                 assert value in self.ACCEPTED_BACKENDS.keys(), (
                     f"Backend {value} not supported. "
@@ -273,7 +267,6 @@ class LightningModuleNonTemporal(pl.LightningModule):
             prog_bar=True,
             logger=True,
             sync_dist=True,
-
         )
         return loss
 
@@ -281,7 +274,7 @@ class LightningModuleNonTemporal(pl.LightningModule):
         x, y = batch
         y = y.float()
         y_hat = self.forward(x)
-        
+
         loss = self.loss(y_hat, y)
         self.test_predictions.extend(y_hat.detach().cpu().tolist())
         if len(y.shape) > 1:
@@ -298,30 +291,49 @@ class LightningModuleNonTemporal(pl.LightningModule):
             sync_dist=True,
         )
         return loss
-    
-        
 
     def on_train_epoch_end(self):
-        metrics = self._calculate_metrics("train",
-            self.train_predictions, self.train_ground_truth
+        metrics = self._calculate_metrics(
+            "train", self.train_predictions, self.train_ground_truth
         )
-        self.log_dict(metrics, sync_dist=True,on_epoch=True,on_step=False,prog_bar=True, logger=True)
+        self.log_dict(
+            metrics,
+            sync_dist=True,
+            on_epoch=True,
+            on_step=False,
+            prog_bar=True,
+            logger=True,
+        )
         self.train_predictions.clear()
         self.train_ground_truth.clear()
 
     def on_validation_epoch_end(self):
-        metrics = self._calculate_metrics("val",
-            self.val_predictions, self.val_ground_truth
+        metrics = self._calculate_metrics(
+            "val", self.val_predictions, self.val_ground_truth
         )
-        self.log_dict(metrics,sync_dist=True,on_epoch=True,on_step=False, prog_bar=True, logger=True)
+        self.log_dict(
+            metrics,
+            sync_dist=True,
+            on_epoch=True,
+            on_step=False,
+            prog_bar=True,
+            logger=True,
+        )
         self.val_predictions.clear()
         self.val_ground_truth.clear()
 
     def on_test_epoch_end(self):
-        metrics = self._calculate_metrics("test",
-            self.test_predictions, self.test_ground_truth
-        ) 
-        self.log_dict(metrics,sync_dist=True,on_epoch=True,on_step=False, prog_bar=True, logger=True)
+        metrics = self._calculate_metrics(
+            "test", self.test_predictions, self.test_ground_truth
+        )
+        self.log_dict(
+            metrics,
+            sync_dist=True,
+            on_epoch=True,
+            on_step=False,
+            prog_bar=True,
+            logger=True,
+        )
         self.test_predictions.clear()
         self.test_ground_truth.clear()
 
@@ -337,10 +349,7 @@ class LightningModuleTemporalNets(LightningModuleNonTemporal):
         **kwargs,
     ):
         self.ACCEPTED_MODELS["slow_r50"] = slow_r50
-        super().__init__(
-            model_name, pos_weight, dvs_mode, lr, weight_decay, **kwargs
-        )
-        
+        super().__init__(model_name, pos_weight, dvs_mode, lr, weight_decay, **kwargs)
 
     def forward_spiking(self, x: Tensor) -> Tensor:
         """
@@ -356,11 +365,7 @@ class LightningModuleTemporalNets(LightningModuleNonTemporal):
         """
         Forward pass for adapting standard models for temporal processing.
         """
-        out = (
-            (perform_forward_pass_on_temporal_batch(self.model, x))
-            .squeeze(2)
-            .mean(1)
-        )
+        out = (perform_forward_pass_on_temporal_batch(self.model, x)).squeeze(2).mean(1)
 
         out_processed = unsqueeze_dim_if_missing(out)
         return out_processed
@@ -377,7 +382,7 @@ class LightningModuleTemporalNets(LightningModuleNonTemporal):
         """
         Forward pass.
         """
-        if self.model_name in AVAILABLE_SPIKING_MODELS: 
+        if self.model_name in AVAILABLE_SPIKING_MODELS:
             return self.forward_spiking(x)
         elif self.model_name == "slow_r50":
             return self.forward_slowr50(x)

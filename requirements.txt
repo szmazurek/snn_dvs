@@ -75,6 +75,7 @@ six==1.16.0
 smmap==5.0.1
 spikingjelly @ git+https://github.com/fangwei123456/spikingjelly.git@671bcf4ca162a37147ffc5baa100cfb02d7df699
 sympy==1.12
+syops==0.0.5
 tabulate==0.9.0
 tensorrt==8.6.1.post1
 tensorrt-bindings==8.6.1

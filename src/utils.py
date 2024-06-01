@@ -69,9 +69,7 @@ def assign_label(tensor: torch.Tensor) -> float:
     If yes, assigns label 100, otherwise sum of the numbers in tensor.
     """
     assert tensor.dim() == 1, "Tensor must be 1-dimensional"
-    assert torch.all(
-        tensor == 0 | (tensor == 1)
-    ), "Tensor must contain only 0s or 1s"
+    assert torch.all(tensor == 0 | (tensor == 1)), "Tensor must contain only 0s or 1s"
     nonzero = tensor.nonzero()
     if nonzero.numel() == 0:
         return 0  # if negative sample, return 0
@@ -80,9 +78,7 @@ def assign_label(tensor: torch.Tensor) -> float:
         return -tensor.sum().item()
     recursive_difference_tensor = torch.diff(nonzero, dim=0)
     if torch.any(recursive_difference_tensor != 1):
-        return (
-            100  # if ones occur, but there exists any 0 between them, return 1
-        )
+        return 100  # if ones occur, but there exists any 0 between them, return 1
     return tensor.sum().item()
 
 
@@ -123,12 +119,8 @@ def train_val_test_split(full_temporal_dataset, val_size, test_size, seed):
     # further split the training set into train and val subsets
     new_train_indices = data_indices[train_idx]
     new_merged_labels = merged_labels[train_idx]
-    splitter = StratifiedShuffleSplit(
-        n_splits=1, test_size=val_size, random_state=seed
-    )
-    train_new_idx, val_idx = next(
-        splitter.split(new_train_indices, new_merged_labels)
-    )
+    splitter = StratifiedShuffleSplit(n_splits=1, test_size=val_size, random_state=seed)
+    train_new_idx, val_idx = next(splitter.split(new_train_indices, new_merged_labels))
 
     proper_train_idx = new_train_indices[train_new_idx]
     proper_val_idx = new_train_indices[val_idx]
@@ -143,26 +135,6 @@ def train_val_test_split(full_temporal_dataset, val_size, test_size, seed):
             print("Sth is wrong")
 
     return train_dataset, val_dataset, test_dataset, pos_weight
-
-
-def check_labels(_label, _file_output):
-    import numpy as np
-
-    np.savetxt(_file_output, _label.flatten().cpu().numpy())
-
-
-def f1_score(_pred, _target):
-    pred = _pred.view(-1)
-    target = _target.view(-1)
-    tp = torch.sum((pred == 1) & (target == 1)).float()
-    fp = torch.sum((pred == 1) & (target == 0)).float()
-    fn = torch.sum((pred == 0) & (target == 1)).float()
-    tn = torch.sum((pred == 0) & (target == 0)).float()
-    precision = tp / (tp + fp + 1e-10)
-    recall = tp / (tp + fn + 1e-10)
-    _f1 = 2 * (precision * recall) / (precision + recall + 1e-10)
-
-    return _f1.item()
 
 
 def save_model(net, folder_path, file_name):
@@ -183,9 +155,7 @@ def perform_forward_pass_on_temporal_batch(
     Returns:
         result_tensor (torch.Tensor): Result of forward pass, shape [T,B,1].
     """
-    result_tensor = [
-        model(sample[:, i, :, :, :]) for i in range(sample.shape[1])
-    ]
+    result_tensor = [model(sample[:, i, :, :, :]) for i in range(sample.shape[1])]
     return torch.stack(result_tensor).permute(1, 0, 2)
 
 
@@ -202,10 +172,7 @@ def perform_single_sample_time_dimension_forward_pass(
         result_tensor (torch.Tensor): Result of forward pass, shape [1,T,1].
     """
     result_tensor = torch.stack(
-        [
-            model(sample[t, :, :, :].unsqueeze(0))
-            for t in range(sample.shape[0])
-        ]
+        [model(sample[t, :, :, :].unsqueeze(0)) for t in range(sample.shape[0])]
     )
     return result_tensor.permute(1, 0, 2)
 
