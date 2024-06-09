@@ -1,3 +1,4 @@
+/.idea
 datasets/
 *.sh
 wandb*
