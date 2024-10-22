@@ -9,16 +9,16 @@
 ## Ilość pamięci przypadającej na jeden rdzeń obliczeniowy (domyślnie 4GB na rdzeń)
 #SBATCH --mem=40GB
 ## Maksymalny czas trwania zlecenia (format HH:MM:SS)
-#SBATCH --time=04:00:00
+#SBATCH --time=06:0:00
 ## Nazwa grantu do rozliczenia zużycia zasobów
 #SBATCH -A plgdyplomanci5-gpu-a100
 ## Specyfikacja partycji
 #SBATCH --partition plgrid-gpu-a100
 #SBATCH --gpus=1
 ## Plik ze standardowym wyjściem
-#SBATCH --output="/net/tscratch/people/plgjakubcaputa/output_files/out/output8thMay.out"
+#SBATCH --output="/net/tscratch/people/plgjakubcaputa/output_files/out/2024_10_15_1.out"
 ## Plik ze standardowym wyjściem błędó0w
-#SBATCH --error="/net/tscratch/people/plgjakubcaputa/output_files/err/error8thMay.err"
+#SBATCH --error="/net/tscratch/people/plgjakubcaputa/output_files/err/2024_10_15.err"
 
 # Function to update a parameter in the YAML file
 update_param() {
@@ -39,27 +39,19 @@ cd $SCRATCH/snn_dvs/
 
 srun python src/train_lightning.py
 
-update_param "n_samples" "3,"
-update_param "repeats" "3,"
+
+update_param "  name" "slow_r50,"
+srun python src/train_lightning.py
+
+update_param "  name" "resnet18,"
 srun python src/train_lightning.py
 
 
-update_param "n_samples" "2,"
-update_param "repeats" "2,"
+update_param "  root_path" ".SLASHdatasetsSLASHdataset_jaadSLASHsilver_dvs_good_weatherSLASH,"
 srun python src/train_lightning.py
 
-update_param "  root_path" ".SLASHdatasetsSLASHdataset_jaadSLASHbad_weatherSLASH,"
-replace_slash "config.yml"
+update_param "  name" "slow_r50,"
 srun python src/train_lightning.py
 
-update_param "n_samples" "3,"
-update_param "repeats" "3,"
+update_param "  name" "sew_resnet18_spiking,"
 srun python src/train_lightning.py
-
-update_param "n_samples" "10,"
-update_param "repeats" "10,"
-srun python src/train_lightning.py
-
-
-
-

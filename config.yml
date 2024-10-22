@@ -7,20 +7,20 @@ early_stopping_patience : 8
 
 model : {
   type : temporal,
-  name : resnet18,
+  name : sew_resnet18_spiking,
   spiking_params : {
     neuron_model : plif,
     surrogate_function : sigmoid,
     n_samples : 9,
-    step_mode : single_step,
+    step_mode : multi_step,
     backend : torch,
     
   }
 }
 
 dataset : {
-  root_path : ./datasets/dataset_jaad/good_weather/,
-  dvs_mode : False,
+  root_path : ./datasets/dataset_jaad/silver_dvs_bad_weather/, 
+  dvs_mode : True,
   type : temporal,
   img_width : 256,
   img_height : 450,
@@ -30,14 +30,14 @@ dataset : {
   test_size : 0.15, # only used if evaluation_mode is standard
   timestep : 9, # only used if type is temporal  #30
   overlap : 8, # only used if type is temporal  #29
-  repeats : 10, # only used if type is repeated
+  repeats : 10,
   n_frames_predictive_horizon : 150 # only used if type is prediction
 }
 
 wandb : {
   entity : ml_agh,
   project : jaad_experiments,
-  group : paper_experiments2,
+  group : 2nd_paper_experiments,
 }
 
 checkpoint_path : checkpoints_lightning

@@ -9,16 +9,16 @@
 ## Ilość pamięci przypadającej na jeden rdzeń obliczeniowy (domyślnie 4GB na rdzeń)
 #SBATCH --mem=40GB
 ## Maksymalny czas trwania zlecenia (format HH:MM:SS)
-#SBATCH --time=04:00:00
+#SBATCH --time=00:20:00
 ## Nazwa grantu do rozliczenia zużycia zasobów
 #SBATCH -A plgdyplomanci5-gpu-a100
 ## Specyfikacja partycji
 #SBATCH --partition plgrid-gpu-a100
 #SBATCH --gpus=1
 ## Plik ze standardowym wyjściem
-#SBATCH --output="/net/tscratch/people/plgjakubcaputa/output_files/out/output8thMay.out"
+#SBATCH --output="/net/tscratch/people/plgjakubcaputa/output_files/out/output3.out"
 ## Plik ze standardowym wyjściem błędó0w
-#SBATCH --error="/net/tscratch/people/plgjakubcaputa/output_files/err/error8thMay.err"
+#SBATCH --error="/net/tscratch/people/plgjakubcaputa/output_files/err/error3.err"
 
 # Function to update a parameter in the YAML file
 update_param() {
@@ -37,28 +37,12 @@ source $SCRATCH/venvs/spiking_env/bin/activate
 
 cd $SCRATCH/snn_dvs/
 
+
+update_param "n_samples" "30,"
+update_param "timestep" "30,"
+update_param "overlap" "29,"
 srun python src/train_lightning.py
 
-update_param "n_samples" "3,"
-update_param "repeats" "3,"
-srun python src/train_lightning.py
-
-
-update_param "n_samples" "2,"
-update_param "repeats" "2,"
-srun python src/train_lightning.py
-
-update_param "  root_path" ".SLASHdatasetsSLASHdataset_jaadSLASHbad_weatherSLASH,"
-replace_slash "config.yml"
-srun python src/train_lightning.py
-
-update_param "n_samples" "3,"
-update_param "repeats" "3,"
-srun python src/train_lightning.py
-
-update_param "n_samples" "10,"
-update_param "repeats" "10,"
-srun python src/train_lightning.py
 
 
 

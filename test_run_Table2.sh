@@ -5,20 +5,20 @@
 #SBATCH -N 1
 ## Liczba zadań per węzeł (domyślnie jest to liczba alokowanych rdzeni na węźle)
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=24
 ## Ilość pamięci przypadającej na jeden rdzeń obliczeniowy (domyślnie 4GB na rdzeń)
 #SBATCH --mem=40GB
 ## Maksymalny czas trwania zlecenia (format HH:MM:SS)
-#SBATCH --time=12:00:00
+#SBATCH --time=10:00:00
 ## Nazwa grantu do rozliczenia zużycia zasobów
 #SBATCH -A plgdyplomanci5-gpu-a100
 ## Specyfikacja partycji
 #SBATCH --partition plgrid-gpu-a100
 #SBATCH --gpus=1
 ## Plik ze standardowym wyjściem
-#SBATCH --output="/net/tscratch/people/plgjakubcaputa/output_files/out/output2.out"
+#SBATCH --output="/net/tscratch/people/plgjakubcaputa/output_files/out/output4.out"
 ## Plik ze standardowym wyjściem błędó0w
-#SBATCH --error="/net/tscratch/people/plgjakubcaputa/output_files/err/error2.err"
+#SBATCH --error="/net/tscratch/people/plgjakubcaputa/output_files/err/error4.err"
 
 # Function to update a parameter in the YAML file
 update_param() {
@@ -37,14 +37,28 @@ source $SCRATCH/venvs/spiking_env/bin/activate
 
 cd $SCRATCH/snn_dvs/
 
-srun python src/train_lightning.py
+## srun python src/train_lightning.py
 
-update_param "  name" "resnet18_spiking,"
-srun python src/train_lightning.py
+update_param "step_mode" "single_step,"
+update_param "name" "slow_r50,"
+## srun python src/train_lightning.py
 
-update_param "  name" "slow_r50,"
-srun python src/train_lightning.py
 
+update_param "name" "resnet18,"
+## srun python src/train_lightning.py
+
+update_param "  root_path" ".SLASHdatasetsSLASHdataset_jaadSLASHgood_weatherSLASH,"
+replace_slash "config.yml"
+## srun python src/train_lightning.py
+
+
+update_param "name" "slow_r50,"
+## srun python src/train_lightning.py
+
+
+update_param "step_mode" "multi_step,"
+update_param "name" "sew_resnet18_spiking,"
+srun python src/train_lightning.py
 
 
 
