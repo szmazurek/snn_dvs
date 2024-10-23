@@ -1,15 +1,15 @@
 seed : 42
-batch_size : 8
-epochs : 1
+batch_size : 32
+epochs : 100
 lr : 0.001
-weight_decay : 0.1
+weight_decay : 0.001
 early_stopping_patience : 8
 
 # spiking params are optional, if not specified, default values will be used
 # models : resnet18, resnet18_spiking, slow_r50, vgg11_spiking, sew_resnet18_spiking
 model : {
   type : temporal, # or temporal, or single_sample
-  name : slow_r50,
+  name : mvitv2_s,
   spiking_params : {
     neuron_model : plif,
     surrogate_function : sigmoid,
@@ -20,29 +20,30 @@ model : {
 }
 
 dataset : {
-  root_path : ./datasets/dataset_rgb,
-  dvs_mode : False, # or False for RGB
+  root_path : ./datasets/dataset_weather_rgb,
+  dvs_mode : False, # or False for RGB, weather DVS data is used or not
   type : temporal, # either temporal, repeated, single_sample, prediction_temporal, prediction_single_sample, prediction_repeated
   img_width : 256,
   img_height : 450,
-  evaluation_mode : standard, # or kfold
-  n_folds : 5, # only used if evaluation_mode is kfold
+  evaluation_mode : standard, # or kfold (not implemented yet)
+  n_folds : 5, # only used if evaluation_mode is kfold (not implemented yet)
   val_size : 0.15, # always used
   test_size : 0.15, # only used if evaluation_mode is standard
-  timestep : 30, # only used if type is temporal
-  overlap : 29, # only used if type is temporal
-  repeats : 10, # only used if type is repeated
-  n_frames_predictive_horizon : 150 # only used if type is prediction
+  timestep : 9, # only used if type is temporal, clip length
+  overlap : 8, # only used if type is temporal, overlap between clips
+  repeats : 10, # only used if type is repeated, number of repeats
+  n_frames_predictive_horizon : 30 # only used if type is prediction
 }
 
 wandb : {
   entity : mazurek,
   project : dvs_final_detection_seed,
-  group : slow_r50_temporal
+  group : vit_exp_proper_test
   }
-checkpoint_path : checkpoints_lightning
-dataset_save_dir : results_new_runs/datasets # save the test data for every fold (or entire run)
-checkpoint_dir_to_restore : checkpoints_lightning/4d2ba12d-3762-412e-8648-609a789f2472
+checkpoint_path : /net/tscratch/people/plgmazurekagh/SpikingScripts/checkpoints_lightning
+dataset_save_dir : /net/tscratch/people/plgmazurekagh/SpikingScripts/results_new_runs/datasets # save the test data for every fold (or entire run)
+# to restore training from a checkpoint, specify the path to the checkpoint directory
+# checkpoint_dir_to_restore : checkpoints_lightning/4d2ba12d-3762-412e-8648-609a789f2472
 
 
 

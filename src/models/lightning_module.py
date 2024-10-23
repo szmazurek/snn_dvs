@@ -4,16 +4,16 @@ from torch.nn import functional as F
 from torch import Tensor
 import lightning.pytorch as pl
 from torchmetrics import Accuracy, F1Score, Recall, Precision, AUROC
-from spikingjelly.activation_based import (
-    neuron,
-    functional,
-    surrogate,
+from spikingjelly.activation_based import neuron, functional, surrogate
+from .models import (
+    slow_r50,
+    Resnet18,
+    Resnet18_spiking,
+    VGG11_spiking,
+    SewResnet18,
+    mvitv2_s,
 )
-from .models import slow_r50, Resnet18, Resnet18_spiking, VGG11_spiking, SewResnet18
-from utils import (
-    unsqueeze_dim_if_missing,
-    perform_forward_pass_on_temporal_batch,
-)
+from utils import unsqueeze_dim_if_missing, perform_forward_pass_on_temporal_batch
 from typing import List, Dict, Any, Callable
 from warnings import warn
 
@@ -39,14 +39,8 @@ class LightningModuleNonTemporal(pl.LightningModule):
         "sigmoid": surrogate.Sigmoid,
         "atan": surrogate.ATan,
     }
-    ACCEPTED_BACKENDS = {
-        "cupy": "cupy",
-        "torch": "torch",
-    }
-    ACCEPTED_STEP_MODES = {
-        "single_step": "s",
-        "multi_step": "m",
-    }
+    ACCEPTED_BACKENDS = {"cupy": "cupy", "torch": "torch"}
+    ACCEPTED_STEP_MODES = {"single_step": "s", "multi_step": "m"}
 
     def __init__(
         self,
@@ -96,9 +90,7 @@ class LightningModuleNonTemporal(pl.LightningModule):
             "auroc": AUROC("binary"),
         }
 
-    def _assign_model(
-        self,
-    ) -> nn.Module:
+    def _assign_model(self) -> nn.Module:
         module = self.ACCEPTED_MODELS[self.model_name]
         if self.model_name in AVAILABLE_SPIKING_MODELS:
             self._ensure_spiking_attrs()
@@ -110,6 +102,9 @@ class LightningModuleNonTemporal(pl.LightningModule):
             )
             functional.set_step_mode(model, self.step_mode)
             functional.set_backend(model, self.backend)
+            return model
+        elif self.model_name == "mvitv2_s":
+            model = module(dvs_mode=self.dvs_mode, n_samples=self.n_samples)
             return model
         model = module(dvs_mode=self.dvs_mode)
         return model
@@ -170,20 +165,14 @@ class LightningModuleNonTemporal(pl.LightningModule):
                 self.n_samples = value
 
             else:
-                warn(
-                    f"Unknown keyword argument {key} with value {value}",
-                    UserWarning,
-                )
+                warn(f"Unknown keyword argument {key} with value {value}", UserWarning)
 
     def _ensure_spiking_attrs(self) -> None:
         """
         Ensures that the necessary attributes for spiking models are set.
         """
         if not hasattr(self, "neuron_model"):
-            warn(
-                "No neuron model specified. Using LIFNode as default.",
-                UserWarning,
-            )
+            warn("No neuron model specified. Using LIFNode as default.", UserWarning)
             self.neuron_model = neuron.LIFNode
         if not hasattr(self, "surrogate_function"):
             warn(
@@ -192,10 +181,7 @@ class LightningModuleNonTemporal(pl.LightningModule):
             )
             self.surrogate_function = surrogate.Sigmoid
         if not hasattr(self, "backend"):
-            warn(
-                "No backend specified. Using torch as default.",
-                UserWarning,
-            )
+            warn("No backend specified. Using torch as default.", UserWarning)
             self.backend = "torch"
         if not hasattr(self, "step_mode"):
             warn(
@@ -205,10 +191,7 @@ class LightningModuleNonTemporal(pl.LightningModule):
             )
             self.step_mode = "s"
         if not hasattr(self, "n_samples"):
-            warn(
-                "No n_samples specified. Using 1 as default.",
-                UserWarning,
-            )
+            warn("No n_samples specified. Using 1 as default.", UserWarning)
             self.n_samples = 1
 
     def configure_optimizers(self):
@@ -349,6 +332,7 @@ class LightningModuleTemporalNets(LightningModuleNonTemporal):
         **kwargs,
     ):
         self.ACCEPTED_MODELS["slow_r50"] = slow_r50
+        self.ACCEPTED_MODELS["mvitv2_s"] = mvitv2_s
         super().__init__(model_name, pos_weight, dvs_mode, lr, weight_decay, **kwargs)
 
     def forward_spiking(self, x: Tensor) -> Tensor:
@@ -378,6 +362,10 @@ class LightningModuleTemporalNets(LightningModuleNonTemporal):
         out_processed = unsqueeze_dim_if_missing(out)
         return out_processed
 
+    def forward_mvitv2_s(self, x: Tensor) -> Tensor:
+        out = self.model(x.permute(0, 2, 1, 3, 4))
+        return out.squeeze(1)
+
     def forward(self, x: Tensor) -> Tensor:
         """
         Forward pass.
@@ -386,5 +374,8 @@ class LightningModuleTemporalNets(LightningModuleNonTemporal):
             return self.forward_spiking(x)
         elif self.model_name == "slow_r50":
             return self.forward_slowr50(x)
+        elif self.model_name == "mvitv2_s":
+            return self.forward_mvitv2_s(x)
+
         else:
             return self.forward_pseudotemporal_model(x)

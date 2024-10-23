@@ -5,7 +5,9 @@ from spikingjelly.activation_based.model.sew_resnet import (
     sew_resnext50_32x4d,
 )
 import torch
+import torchvision
 import torch.nn as nn
+from .mvit import mvit_v2_s
 from spikingjelly.activation_based import surrogate, neuron, functional, layer
 from torchvision.models import resnet18, ResNet18_Weights
 from torch.autograd import Variable
@@ -66,12 +68,7 @@ def VGG11_spiking(
     )
     if dvs_mode:
         net.features[0] = layer.Conv2d(
-            1,
-            64,
-            kernel_size=(3, 3),
-            stride=(1, 1),
-            padding=(1, 1),
-            bias=False,
+            1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False
         )
     net.classifier[6] = layer.Linear(4096, 1)
     return net
@@ -93,12 +90,7 @@ def SewResnet18(
     )
     if dvs_mode:
         net.conv1 = layer.Conv2d(
-            1,
-            64,
-            kernel_size=(7, 7),
-            stride=(2, 2),
-            padding=(3, 3),
-            bias=False,
+            1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
         )
     if convert_bn_to_tebn:
         replace_bn_with_tebn(net, n_samples)
@@ -120,12 +112,7 @@ def Resnet18_spiking(
     )
     if dvs_mode:
         net.conv1 = layer.Conv2d(
-            1,
-            64,
-            kernel_size=(7, 7),
-            stride=(2, 2),
-            padding=(3, 3),
-            bias=False,
+            1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
         )
     net.fc = layer.Linear(512, 1)
     return net
@@ -136,13 +123,21 @@ def Resnet18(dvs_mode=False) -> nn.Module:
     net.fc = nn.Linear(512, 1)
     if dvs_mode:
         net.conv1 = nn.Conv2d(
-            1,
-            64,
-            kernel_size=(7, 7),
-            stride=(2, 2),
-            padding=(3, 3),
-            bias=False,
+            1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
         )
+    return net
+
+
+def mvitv2_s(n_samples: int, dvs_mode=False) -> nn.Module:
+    spatial_size = (256, 450)
+    n_channels = 1 if dvs_mode else 3
+    nclasses_kwargs = {"num_classes": 1}
+    net = mvit_v2_s(
+        spatial_size=spatial_size,
+        n_channels=n_channels,
+        temporal_size=n_samples,
+        **nclasses_kwargs
+    )
     return net
 
 

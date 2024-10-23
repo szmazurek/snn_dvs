@@ -71,19 +71,13 @@ def construct_datasets(
         dataset_class = AVAILABLE_DATASETS[dataset_type]  # type: ignore
     if dataset_type == "single_sample":
         train_dataset = dataset_class(
-            folder_list=train_videos,
-            dvs_mode=dvs_mode,
-            target_size=target_size,
+            folder_list=train_videos, dvs_mode=dvs_mode, target_size=target_size
         )
         val_dataset = dataset_class(
-            folder_list=val_videos,
-            dvs_mode=dvs_mode,
-            target_size=target_size,
+            folder_list=val_videos, dvs_mode=dvs_mode, target_size=target_size
         )
         test_dataset = dataset_class(
-            folder_list=test_videos,
-            dvs_mode=dvs_mode,
-            target_size=target_size,
+            folder_list=test_videos, dvs_mode=dvs_mode, target_size=target_size
         )
     elif dataset_type == "repeated":
         train_dataset = dataset_class(
@@ -239,7 +233,7 @@ def train_normal_loop(parameters: dict):
     # model params
     MODEL_NAME = parameters["model"]["name"]
     MODEL_TYPE = parameters["model"]["type"]
-    if "spiking" in MODEL_NAME.lower():
+    if "spiking" in MODEL_NAME.lower() or "mvit" in MODEL_NAME.lower():
         SPIKING_PARAMS = parameters["model"]["spiking_params"]
     else:
         SPIKING_PARAMS = None
@@ -263,10 +257,7 @@ def train_normal_loop(parameters: dict):
     MODALITY = "DVS" if DVS_MODE else "RGB"
     VAL_SIZE = parameters["dataset"]["val_size"]
     TEST_SIZE = parameters["dataset"]["test_size"]
-    IMG_SIZE = (
-        parameters["dataset"]["img_width"],
-        parameters["dataset"]["img_height"],
-    )
+    IMG_SIZE = (parameters["dataset"]["img_width"], parameters["dataset"]["img_height"])
     # wandb params
     WANDB_ENTITY = parameters["wandb"]["entity"]
     WANDB_PROJECT = parameters["wandb"]["project"]
@@ -338,10 +329,7 @@ def train_normal_loop(parameters: dict):
         wandb.log({"run_id": run_id})
 
     wandb_logger = pl.loggers.WandbLogger(
-        entity=WANDB_ENTITY,
-        project=WANDB_PROJECT,
-        group=WANDB_GROUP,
-        name=WANDB_NAME,
+        entity=WANDB_ENTITY, project=WANDB_PROJECT, group=WANDB_GROUP, name=WANDB_NAME
     )
 
     checkpoint_path_run = os.path.join(CHECKPOINT_PATH, run_id)
