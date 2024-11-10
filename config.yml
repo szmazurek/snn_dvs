@@ -1,5 +1,5 @@
 seed : 42
-batch_size : 16
+batch_size : 8
 epochs : 100
 lr : 0.001
 weight_decay : 0.1
@@ -19,8 +19,8 @@ model : {
 }
 
 dataset : {
-  root_path : ./datasets/dataset_jaad/silver_dvs_bad_weather/, 
-  dvs_mode : True,
+  root_path : ./datasets/jaad2/rgb/good_weather/,
+  dvs_mode : False,
   type : temporal,
   img_width : 256,
   img_height : 450,
@@ -28,8 +28,8 @@ dataset : {
   n_folds : 5, # only used if evaluation_mode is kfold
   val_size : 0.15, # always used
   test_size : 0.15, # only used if evaluation_mode is standard
-  timestep : 9, # only used if type is temporal  #30
-  overlap : 8, # only used if type is temporal  #29
+  timestep : 9,
+  overlap : 8,
   repeats : 10,
   n_frames_predictive_horizon : 150 # only used if type is prediction
 }
@@ -42,7 +42,7 @@ wandb : {
 
 checkpoint_path : checkpoints_lightning
 dataset_save_dir : results_new_runs/datasets # save the test data for every fold (or entire run)
-#checkpoint_dir_to_restore : checkpoints_lightning/8e7a9d93-7575-4272-82f2-3bbb9dd35e75
+#checkpoint_dir_to_restore : checkpoints_lightning/c3db4633-b900-42be-9dfe-c0916f06018a
 
 
 

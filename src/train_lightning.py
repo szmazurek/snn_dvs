@@ -505,6 +505,7 @@ def train_lightning_kfold(parameters):
             callbacks=[checkpoint_callback, early_stopping_callback],
             logger=wandb_logger,
             log_every_n_steps=1,
+            #accumulate_grad_batches=2
         )
         pl.seed_everything(
             parameters["seed"]
