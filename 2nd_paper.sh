@@ -9,7 +9,7 @@
 ## Ilość pamięci przypadającej na jeden rdzeń obliczeniowy (domyślnie 4GB na rdzeń)
 #SBATCH --mem=40GB
 ## Maksymalny czas trwania zlecenia (format HH:MM:SS)
-#SBATCH --time=03:00:00
+#SBATCH --time=24:00:00
 ## Nazwa grantu do rozliczenia zużycia zasobów
 #SBATCH -A plgdyplomanci6-gpu-a100
 ## Specyfikacja partycji
@@ -54,7 +54,19 @@ srun python src/train_lightning.py
 
 update_param "  root_path" ".SLASHdatasetsSLASHjaad2SLASHdvs_decaySLASHgood_weatherSLASH,"
 replace_slash "config.yml"
-update_param "dvs_mode" "True,"
+srun python src/train_lightning.py
+
+update_param "  root_path" ".SLASHdatasetsSLASHjaad2SLASHdvs_decaySLASHbad_weatherSLASH,"
+replace_slash "config.yml"
+srun python src/train_lightning.py
+
+update_param "  root_path" ".SLASHdatasetsSLASHjaad2SLASHrgbSLASHbad_weatherSLASH,"
+replace_slash "config.yml"
+update_param "dvs_mode" "False,"
+srun python src/train_lightning.py
+
+update_param "  root_path" ".SLASHdatasetsSLASHjaad2SLASHrgbSLASHgood_weatherSLASH,"
+replace_slash "config.yml"
 srun python src/train_lightning.py
 
 # update_param "  name" "slow_r50,"

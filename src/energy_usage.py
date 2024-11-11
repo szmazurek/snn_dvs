@@ -23,9 +23,11 @@ Emac = 4.6e-12
 # }
 
 exp_ids_map_sew_resnet = {
-    "rgb_sew_10": "3b0c0ff7-91bb-4c42-a3b4-354df90388f8"
+    "rgb_sew_10": "e5a0a5c8-ae26-4d76-b045-9a3721e0d2bb"
 }
-
+# exp_ids_map_sew_resnet = {
+#     "rgb_sew_10": "1416d20f-72d8-4957-9097-daad366d5781"
+# }
 
 def get_dataloader(exp_name):
     dataset_root = "results_new_runs/datasets"
@@ -65,22 +67,23 @@ with torch.cuda.device(0):
     # set_step_mode(net, 'm')
     # timestep = 30
     # input_shape = (timestep,1,3, 224, 224)
-    timestep = 10
+    timestep = 9
     exp_evaluated = "rgb_sew_10"
     state_dict = get_state_dict(exp_evaluated)
     net = SewResnet18(
-        dvs_mode=True,
+        dvs_mode=False,
         convert_bn_to_tebn=False,
         n_samples=timestep,
         neuron_model=neuron.ParametricLIFNode,
     ).to("cuda")
-    print(state_dict)
+    #print(state_dict)
     net.load_state_dict(state_dict)
+    print(net)
 
     dataloader = get_dataloader(exp_evaluated)
 
     set_step_mode(net, "m")
-    input_shape = (timestep, 1, 3, 450, 256)
+    input_shape = (timestep, 1, 1, 450, 256)
 
     # net = Resnet18(dvs_mode=False).to('cuda')
     # # # net.forward = pt_resnet_forward
@@ -103,8 +106,13 @@ with torch.cuda.device(0):
     print(ops[1])
     print(type(ops[1]))
     print(type(ops[2]))
-    energy_acs = ops[1] * Eac
-    energy_macs = ops[2] * Emac
+    #energy_acs = ops[1] * Eac
+    #energy_macs = ops[2] * Emac
+    #total_mj = (energy_acs + energy_macs) * 1e3
+
+    # conversion from string to flat
+    energy_acs = float(ops[1].split()[0]) * 1e9 * Eac  # Convert to float and multiply by 10^9
+    energy_macs = float(ops[2].split()[0]) * 1e9 * Eac  # Convert to float and multiply by 10^9
     total_mj = (energy_acs + energy_macs) * 1e3
     print(f"Computational complexity OPs: {ops[0]}")
     print(f"Computational complexity ACs: {ops[1]}")

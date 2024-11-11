@@ -9,16 +9,16 @@
 ## Ilość pamięci przypadającej na jeden rdzeń obliczeniowy (domyślnie 4GB na rdzeń)
 #SBATCH --mem=40GB
 ## Maksymalny czas trwania zlecenia (format HH:MM:SS)
-#SBATCH --time=00:02:00
+#SBATCH --time=00:01:00
 ## Nazwa grantu do rozliczenia zużycia zasobów
-#SBATCH -A plgdyplomanci5-gpu-a100
+#SBATCH -A plgdyplomanci6-gpu-a100
 ## Specyfikacja partycji
 #SBATCH --partition plgrid-gpu-a100
 #SBATCH --gpus=1
 ## Plik ze standardowym wyjściem
-#SBATCH --output="/net/tscratch/people/plgjakubcaputa/output_files/out/2024_10_28_%j.out"
+#SBATCH --output="/net/tscratch/people/plgjakubcaputa/output_files/out/2024_11_10/_energy_%j.out"
 ## Plik ze standardowym wyjściem błędó0w
-#SBATCH --error="/net/tscratch/people/plgjakubcaputa/output_files/out/2024_10_28_%j.out"
+#SBATCH --error="/net/tscratch/people/plgjakubcaputa/output_files/out/2024_11_10/_energy_%j.out"
 
 
 ml CUDA/11.8
@@ -27,6 +27,6 @@ source $SCRATCH/venvs/spiking_env/bin/activate
 
 cd $SCRATCH/snn_dvs/
 
-srun python src/energy_usage.py
+srun python src/energy_measurements.py
 
 

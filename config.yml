@@ -1,5 +1,5 @@
 seed : 42
-batch_size : 8
+batch_size : 4
 epochs : 100
 lr : 0.001
 weight_decay : 0.1
@@ -11,7 +11,7 @@ model : {
   spiking_params : {
     neuron_model : plif,
     surrogate_function : sigmoid,
-    n_samples : 9,
+    n_samples : 30,
     step_mode : multi_step,
     backend : torch,
     
@@ -19,8 +19,8 @@ model : {
 }
 
 dataset : {
-  root_path : ./datasets/jaad2/rgb/good_weather/,
-  dvs_mode : False,
+  root_path : ./datasets/jaad2/dvs_decay/good_weather/,
+  dvs_mode : True,
   type : temporal,
   img_width : 256,
   img_height : 450,
@@ -28,8 +28,8 @@ dataset : {
   n_folds : 5, # only used if evaluation_mode is kfold
   val_size : 0.15, # always used
   test_size : 0.15, # only used if evaluation_mode is standard
-  timestep : 9,
-  overlap : 8,
+  timestep : 30,
+  overlap : 29,
   repeats : 10,
   n_frames_predictive_horizon : 150 # only used if type is prediction
 }
